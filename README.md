@@ -128,950 +128,627 @@ Phase 9  문서화 / 포트폴리오
 
 ## Phase 0 — 준비
 
-### 목적
-
-코드보다 개념을 먼저 고정하고, 개발 환경을 세팅한다. 문서만 쓰다 멈추지 않도록 프로젝트 초기화도 같이 진행한다.
-
 ### Step 0-1. LLM Provider 확정
 
-**OpenAI API (ChatGPT)** 로 확정한다.
+- [ ] **Task 0-1-1. LLMClient 인터페이스 정의**
+  - **무엇**: `LLMClient` 인터페이스 파일 1개 작성
+  - **왜**: provider를 고정하기 전에 추상화 경계를 먼저 정의해야 이후 planner 설계 시 구현 의존이 없음
+  - **산출물**: `internal/llm/client.go`
 
-Planner 인터페이스를 설계하기 전에 provider를 고정해야 tool calling 스펙을 반영한 추상화를 제대로 만들 수 있다. 나중에 provider를 바꾸더라도 내부만 교체되도록 LLM 추상화 레이어를 둔다.
+- [ ] **Task 0-1-2. CompletionRequest / CompletionResponse 타입 정의**
+  - **무엇**: LLM 요청/응답 구조체 정의
+  - **왜**: 인터페이스만으로는 호출부를 작성할 수 없음. 타입이 확정되어야 stub 구현이 가능함
+  - **산출물**: `internal/llm/types.go`
 
-```go
-type LLMClient interface {
-    Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error)
-}
-```
+### Step 0-2. 환경설정
 
-### Step 0-2. 환경설정 (docker-compose + .env)
+- [x] **Task 0-2-1. docker-compose.yml 작성** ✓
+  - **무엇**: Redis, Postgres 컨테이너 정의
+  - **왜**: Phase 4 이전부터 인프라가 실제로 떠 있어야 연결 테스트 가능
+  - **산출물**: `docker-compose.yml`
 
-`docker-compose.yml` 작성 — Redis와 Postgres를 로컬에서 띄운다.
+- [x] **Task 0-2-2. .env.example 작성** ✓
+  - **무엇**: 환경변수 목록 문서화 + `.gitignore` 설정
+  - **왜**: 실제 `.env`를 레포에 올리지 않으면서 필요한 키 목록을 공유
+  - **산출물**: `.env.example`
 
-```yaml
-services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: agent
-      POSTGRES_PASSWORD: agent
-      POSTGRES_DB: agentflow
-    ports:
-      - "5432:5432"
-```
-
-환경변수는 `.env` 파일로 관리한다. `.env.example`을 레포에 포함하고, `.env`는 `.gitignore`에 추가한다.
-
-```
-# .env.example
-OPENAI_API_KEY=sk-...
-REDIS_URL=redis://localhost:6379
-POSTGRES_URL=postgres://agent:agent@localhost:5432/agentflow?sslmode=disable
-```
-
-코드에서는 `os.Getenv` 또는 별도 config 패키지로 읽는다. 환경변수가 없으면 시작 시점에 명확히 에러를 낸다.
+- [ ] **Task 0-2-3. 환경변수 로딩 코드 작성**
+  - **무엇**: 앱 시작 시 `.env`를 읽고 누락 변수가 있으면 즉시 에러를 내는 config 패키지
+  - **왜**: 환경변수가 없을 때 런타임 중간에 터지는 것을 방지
+  - **산출물**: `internal/config/config.go`
 
 ### Step 0-3. 프로젝트 초기화
 
-```
-cmd/agent-cli/
-internal/agent/
-internal/planner/
-internal/executor/
-internal/state/
-internal/tools/
-docs/
-```
+- [ ] **Task 0-3-1. 디렉터리 구조 생성**
+  - **무엇**: `cmd/agent-cli/`, `internal/agent/`, `internal/planner/`, `internal/executor/`, `internal/state/`, `internal/tools/`, `docs/` 생성
+  - **왜**: 경계를 디렉터리로 물리적으로 분리해두어야 이후 패키지 간 의존 방향을 강제할 수 있음
+  - **산출물**: 디렉터리 트리
 
-각 디렉터리에 빈 인터페이스 stub 파일을 생성하고 `go build ./...`가 통과하는지 확인한다.
+- [ ] **Task 0-3-2. 각 패키지 stub 파일 생성 + go build 통과**
+  - **무엇**: 각 디렉터리에 `package` 선언만 있는 빈 `.go` 파일 생성
+  - **왜**: `go build ./...` 통과 여부로 패키지 경계가 올바른지 확인
+  - **산출물**: 각 패키지의 빈 stub 파일
 
 ### Step 0-4. 용어 정리
 
-`docs/glossary.md` 작성.
-
-Agent / Runtime / Planner / Executor / Tool / Tool Router / Session / Memory / Verifier / Task / Step 각각을 명확히 분리해서 정의한다.
+- [ ] **Task 0-4-1. 핵심 용어 glossary 작성**
+  - **무엇**: Agent, Runtime, Planner, Executor, Tool, Tool Router, Session, Memory, Verifier, Task, Step 각각의 정의
+  - **왜**: 용어가 코드 간에 달리 쓰이면 인터페이스 경계 설계 시 혼란 발생
+  - **산출물**: `docs/glossary.md`
 
 ### Step 0-5. 전체 흐름도
 
-`docs/architecture-overview.md` 작성.
-
-```
-User Request → Runtime → Planner → Tool Router → Executor → Memory Update → Verifier → Response
-```
+- [ ] **Task 0-5-1. 아키텍처 개요 문서 작성**
+  - **무엇**: `User Request → Runtime → Planner → Tool Router → Executor → Memory Update → Verifier → Response` 흐름을 텍스트 다이어그램으로 기술
+  - **왜**: 각 컴포넌트의 위치와 데이터 흐름을 먼저 그려야 인터페이스 설계 시 경계를 잘못 긋지 않음
+  - **산출물**: `docs/architecture-overview.md`
 
 ### Step 0-6. 범위 고정
 
-이번 프로젝트에서 **하지 않을 것**:
-- 브라우저 자동조작
-- 코드 수정형 에이전트
-- 자율 배포 에이전트
-
-**할 것**: QA / Search / Planning형으로 제한
-
-### 테스트
-
-- `docker-compose up` 후 Redis에 `redis-cli ping` 응답 확인
-- `docker-compose up` 후 Postgres에 `psql` 접속 확인
-
-### 완료 기준
-
-- `go build ./...` 통과
-- `docker-compose up` 후 Redis/Postgres 접속 확인
-- `.env.example` 파일 존재, OPENAI_API_KEY 항목 포함
-- `docs/glossary.md`, `docs/architecture-overview.md` 문서 존재
-- LLM Provider 확정, 범위 문서 존재
+- [ ] **Task 0-6-1. 범위 문서 작성**
+  - **무엇**: 할 것(QA/Search/Planning형)과 하지 않을 것(브라우저 자동조작, 코드 수정형, 자율 배포) 명시
+  - **왜**: 나중에 scope creep을 막기 위해 문서로 고정
+  - **산출물**: `docs/scope.md`
 
 ---
 
 ## Phase 1 — 최소 Agent Loop
 
-### 목적
-
-가장 먼저 만들 것은 loop의 뼈대다.
-
-```
-Input → Plan → Execute → Observe → Decide Finish → Response
-```
-
 ### Step 1-1. CLI 입력기
 
-```bash
-go run ./cmd/agent-cli
-> 오늘 서울 날씨 알려줘
-```
+- [ ] **Task 1-1-1. main.go 진입점 작성**
+  - **무엇**: `cmd/agent-cli/main.go` — stdin에서 한 줄 읽어서 `runtime.Run()` 호출
+  - **왜**: loop를 실제로 실행할 진입점이 없으면 테스트가 불가능함
+  - **산출물**: `cmd/agent-cli/main.go`
 
-- stdin 입력
-- request ID 생성
-- session ID 임시 고정
-- 입력 받으면 `runtime.Run()` 호출
+- [ ] **Task 1-1-2. RequestID / SessionID 생성 로직**
+  - **무엇**: UUID 기반 request ID 생성, session ID는 이 단계에서 상수로 고정
+  - **왜**: state에 ID가 없으면 로그 추적이 불가능하고 Phase 4 session 연동 시 연결점이 없음
+  - **산출물**: `internal/agent/id.go`
 
 ### Step 1-2. AgentState 구조
 
-```go
-type AgentState struct {
-    RequestID    string
-    SessionID    string
-    UserInput    string
-    CurrentPlan  PlanResult
-    LastToolCall string
-    ToolResults  []ToolResult
-    FinalAnswer  string
-    StepCount    int
-    Status       AgentStatus
-}
-```
+- [ ] **Task 1-2-1. AgentStatus 타입 정의**
+  - **무엇**: `running`, `finished`, `failed` 등 상태 열거형 정의
+  - **왜**: `AgentState.Status` 필드 타입이 먼저 있어야 `AgentState` struct를 완성할 수 있음
+  - **산출물**: `internal/state/status.go`
 
-`LastToolCall`: 가장 최근에 호출된 tool 이름을 기록한다. retry 판단이나 planner context 구성 시 활용된다.
+- [ ] **Task 1-2-2. ToolResult 타입 정의**
+  - **무엇**: tool 실행 결과를 담는 구조체 정의
+  - **왜**: `AgentState.ToolResults`의 원소 타입이 필요하고, Phase 2 Tool 인터페이스와도 공유됨
+  - **산출물**: `internal/state/tool_result.go`
+
+- [ ] **Task 1-2-3. AgentState struct 정의**
+  - **무엇**: `AgentState` struct — RequestID, SessionID, UserInput, CurrentPlan, LastToolCall, ToolResults, FinalAnswer, StepCount, Status
+  - **왜**: loop의 모든 컴포넌트가 이 구조체를 통해 상태를 주고받음. 이것이 없으면 planner/executor 인터페이스 시그니처를 확정할 수 없음
+  - **산출물**: `internal/state/agent_state.go`
 
 ### Step 1-3. Planner 인터페이스
 
-```go
-type Planner interface {
-    Plan(ctx context.Context, state AgentState) (PlanResult, error)
-}
-```
+- [ ] **Task 1-3-1. ActionType 상수 정의**
+  - **무엇**: `tool_call`, `respond_directly`, `finish` 3개 상수
+  - **왜**: PlanResult 타입 정의에 앞서 ActionType이 먼저 있어야 함
+  - **산출물**: `internal/planner/action_type.go`
 
-PlanResult 필드: action type / selected tool / extracted params / reason
+- [ ] **Task 1-3-2. PlanResult 타입 정의**
+  - **무엇**: action type, selected tool name, tool input, reasoning summary 필드를 갖는 struct
+  - **왜**: Planner 인터페이스 시그니처의 반환 타입
+  - **산출물**: `internal/planner/plan_result.go`
 
-action type은 이 단계에서 3개로 제한한다:
+- [ ] **Task 1-3-3. Planner 인터페이스 정의**
+  - **무엇**: `Plan(ctx, AgentState) (PlanResult, error)` 인터페이스
+  - **왜**: loop가 planner 구현체에 의존하지 않도록 경계를 인터페이스로 정의
+  - **산출물**: `internal/planner/planner.go`
 
-```go
-const (
-    ActionToolCall        ActionType = "tool_call"
-    ActionRespondDirectly ActionType = "respond_directly"
-    ActionFinish          ActionType = "finish"
-)
-```
-
-> Phase 3(Planner 고도화)에서 이 3개를 유지한 채 추가 타입을 확장한다.
-
-Mock planner로도 loop가 돌아야 한다. planner와 loop는 반드시 분리되어야 한다.
+- [ ] **Task 1-3-4. MockPlanner 구현**
+  - **무엇**: 고정된 PlanResult를 순서대로 반환하는 테스트용 planner
+  - **왜**: LLM 없이도 loop 동작을 검증하려면 교체 가능한 구현체가 필요함
+  - **산출물**: `internal/planner/mock_planner.go`
 
 ### Step 1-4. Executor 인터페이스
 
-```go
-type Executor interface {
-    Execute(ctx context.Context, plan PlanResult) (ToolResult, error)
-}
-```
+- [ ] **Task 1-4-1. Executor 인터페이스 정의**
+  - **무엇**: `Execute(ctx, PlanResult) (ToolResult, error)` 인터페이스
+  - **왜**: loop가 실행 구현체에 의존하지 않도록 경계를 인터페이스로 정의
+  - **산출물**: `internal/executor/executor.go`
 
-### Step 1-5. Finish 조건
+- [ ] **Task 1-4-2. MockExecutor 구현**
+  - **무엇**: 고정된 ToolResult를 반환하는 테스트용 executor
+  - **왜**: Phase 2 Tool Registry 없이도 loop 단위 테스트가 가능해야 함
+  - **산출물**: `internal/executor/mock_executor.go`
 
-- planner가 `finish` 반환
-- max step 초과
-- fatal error 발생
-- `respond_directly` 완료
+### Step 1-5. Finish 조건 + Runtime Loop
 
-종료 시 반드시 종료 사유를 state에 기록한다.
+- [ ] **Task 1-5-1. Finish 조건 정의**
+  - **무엇**: `finish` action / max step 초과 / fatal error / `respond_directly` 완료 4개 조건을 판별 함수로 정의
+  - **왜**: 루프 종료 로직이 loop 코드에 인라인으로 흩어지면 테스트와 유지보수가 어려움
+  - **산출물**: `internal/agent/finish.go`
 
-### 테스트
+- [ ] **Task 1-5-2. Runtime.Run() 루프 구현**
+  - **무엇**: `plan → execute → state 반영 → finish 판단`을 반복하는 메인 루프
+  - **왜**: 이것이 전체 커리큘럼의 핵심 골격. 이후 모든 Phase는 이 루프의 부품을 교체하거나 확장하는 것
+  - **산출물**: `internal/agent/runtime.go`
 
-- mock planner로 loop unit test
-  - `tool_call` → 실행 → state 반영 흐름
-  - `finish` 시 루프 종료
-  - max step 초과 시 강제 종료
-- planner를 교체해도 loop가 동작하는지 확인
-
-### 완료 기준
-
-- 질문 1개에 대해 루프가 정상 종료된다
-- mock planner로도 동작한다
-- 실행 로그에 step / action / tool / 종료 사유가 남는다
+- [ ] **Task 1-5-3. Loop 단위 테스트 작성**
+  - **무엇**: mock planner + mock executor 조합으로 `tool_call → finish`, `max step 초과` 케이스 테스트
+  - **왜**: planner 교체 시에도 loop가 동작하는지 검증. 이 테스트가 없으면 Phase 3에서 LLM planner로 교체 시 회귀 확인 불가
+  - **산출물**: `internal/agent/runtime_test.go`
 
 ---
 
 ## Phase 2 — Tool Registry + Tool Router
 
-### 목적
-
-하드코딩 호출 → 등록된 목록에서 선택 후 실행.
-
 ### Step 2-1. Tool 인터페이스
 
-```go
-type Tool interface {
-    Name() string
-    Description() string
-    InputSchema() Schema
-    Execute(ctx context.Context, input map[string]any) (ToolResult, error)
-}
-```
+- [ ] **Task 2-1-1. Schema 타입 정의**
+  - **무엇**: tool 입력 스키마를 표현하는 타입 (필드명, 타입, 필수 여부)
+  - **왜**: Tool 인터페이스의 `InputSchema()` 반환 타입이 필요하고, Phase 3에서 LLM에게 tool spec을 전달할 때도 사용됨
+  - **산출물**: `internal/tools/schema.go`
+
+- [ ] **Task 2-1-2. Tool 인터페이스 정의**
+  - **무엇**: `Name()`, `Description()`, `InputSchema()`, `Execute(ctx, map[string]any) (ToolResult, error)` 인터페이스
+  - **왜**: 모든 tool이 이 인터페이스를 구현하면 registry가 구현체를 몰라도 됨
+  - **산출물**: `internal/tools/tool.go`
 
 ### Step 2-2. Tool Registry
 
-초기 tool 목록: `calculator`, `weather_mock`, `search_mock`
+- [ ] **Task 2-2-1. ToolRegistry 인터페이스 정의**
+  - **무엇**: `Register(Tool)`, `Get(name) (Tool, error)`, `List() []Tool` 인터페이스
+  - **왜**: router가 registry 구현에 의존하지 않도록 경계를 인터페이스로 먼저 정의
+  - **산출물**: `internal/tools/registry.go`
 
-- name으로 조회 가능
-- 미등록 tool 조회 시 명확한 에러
+- [ ] **Task 2-2-2. InMemoryToolRegistry 구현**
+  - **무엇**: map 기반 ToolRegistry 구현체, 미등록 tool 조회 시 명확한 에러 반환
+  - **왜**: 실제 동작하는 registry가 있어야 tool을 등록하고 router가 조회할 수 있음
+  - **산출물**: `internal/tools/in_memory_registry.go`
 
-```go
-type ToolRegistry interface {
-    Register(tool Tool)
-    Get(name string) (Tool, error)
-    List() []Tool
-}
-```
+- [ ] **Task 2-2-3. calculator tool 구현**
+  - **무엇**: 수식 문자열을 받아 계산 결과를 반환하는 tool
+  - **왜**: 외부 API 의존 없이 tool 인터페이스와 registry를 검증할 수 있는 가장 단순한 tool
+  - **산출물**: `internal/tools/calculator/calculator.go`
+
+- [ ] **Task 2-2-4. weather_mock tool 구현**
+  - **무엇**: 도시 이름을 받아 고정된 날씨 데이터를 반환하는 mock tool
+  - **왜**: planner가 tool을 선택하는 시나리오를 현실적으로 테스트하기 위해
+  - **산출물**: `internal/tools/weather_mock/weather_mock.go`
+
+- [ ] **Task 2-2-5. search_mock tool 구현**
+  - **무엇**: 쿼리 문자열을 받아 고정된 검색 결과를 반환하는 mock tool
+  - **왜**: Phase 6 검색 시나리오의 기반이 되며, LLM planner가 search를 선택하는 흐름을 테스트
+  - **산출물**: `internal/tools/search_mock/search_mock.go`
+
+- [ ] **Task 2-2-6. Registry unit test 작성**
+  - **무엇**: 등록 → 조회 성공, 미등록 name 조회 에러 케이스 테스트
+  - **왜**: registry는 단순하지만 이후 모든 tool 조회의 기반이므로 에러 케이스 검증 필수
+  - **산출물**: `internal/tools/in_memory_registry_test.go`
 
 ### Step 2-3. Tool Router
 
-planner 결과 → 실제 tool 연결.
+- [ ] **Task 2-3-1. ToolRouter 구현**
+  - **무엇**: PlanResult를 받아 registry에서 tool을 조회하고 실행하는 컴포넌트. 미등록 tool, input validation 실패, execute 에러를 각각 다르게 처리
+  - **왜**: planner와 tool 실행을 직접 연결하면 planner가 tool 구현에 의존하게 됨. router가 그 사이를 중재
+  - **산출물**: `internal/tools/router.go`
 
-처리해야 할 케이스:
-- 미등록 tool name
-- input validation 실패
-- tool execute 에러
+- [ ] **Task 2-3-2. ToolRouter unit test 작성**
+  - **무엇**: 유효 tool name 라우팅, 잘못된 tool name 에러, input validation 실패 케이스 테스트
+  - **왜**: router의 에러 처리가 loop의 retry 정책에 영향을 주므로 각 케이스가 명확히 구분되어야 함
+  - **산출물**: `internal/tools/router_test.go`
 
 ### Step 2-4. Tool Spec 문서화
 
-`docs/tools.md` 작성.
-
-각 tool의 name, description, 입력 스키마(필드명/타입/필수 여부), 출력 형식, 에러 케이스를 정리한다.
-
-```markdown
-## calculator
-
-- 입력: expression (string, 필수)
-- 출력: result (float64)
-- 에러: 잘못된 수식 입력 시 parse error 반환
-```
+- [ ] **Task 2-4-1. docs/tools.md 작성**
+  - **무엇**: calculator, weather_mock, search_mock 각각의 name, description, 입력 스키마, 출력 형식, 에러 케이스 정리
+  - **왜**: Phase 3에서 LLM system prompt에 tool spec을 넣을 때 이 문서가 기준이 됨
+  - **산출물**: `docs/tools.md`
 
 ### Step 2-5. Tool 실행 로그
 
-각 tool call마다 기록: request id / session id / tool name / input / output summary / duration / error 여부
-
-### 테스트
-
-- registry: 등록 → 조회 → 미등록 에러 unit test
-- router: 유효 / 잘못된 tool name 라우팅 unit test
-- 각 tool: 정상 입력 / 잘못된 입력 unit test
-
-### 완료 기준
-
-- 새 tool 추가 시 registry에 등록만 하면 된다
-- planner와 tool이 느슨하게 결합된다
-- `docs/tools.md`에 각 tool의 입출력 스펙이 정리되어 있다
+- [ ] **Task 2-5-1. Tool 실행 로그 구현**
+  - **무엇**: request id, session id, tool name, input, output summary, duration, error 여부를 구조화된 로그로 출력
+  - **왜**: 이 로그가 없으면 Phase 3~6에서 LLM이 어떤 tool을 선택했는지 추적 불가능
+  - **산출물**: router 또는 executor 내 로그 출력 코드
 
 ---
 
 ## Phase 3 — Planner 고도화 / LLM 연결
 
-### 목적
-
-mock planner를 실제 LLM 기반 planner로 교체한다. 단일 액션 판단에 집중한다. (Task Decomposition은 Phase 6에서 다룬다)
-
 ### Step 3-1. ActionType 확장
 
-Phase 1의 3개(`tool_call`, `respond_directly`, `finish`)를 유지하면서 아래를 추가한다:
-
-```go
-const (
-    // Phase 1에서 정의한 기본 3개
-    ActionToolCall        ActionType = "tool_call"
-    ActionRespondDirectly ActionType = "respond_directly"
-    ActionFinish          ActionType = "finish"
-
-    // Phase 3에서 추가
-    ActionAskUser       ActionType = "ask_user"
-    ActionSummarize     ActionType = "summarize"
-    ActionSearchMemory  ActionType = "search_memory"
-    ActionRetry         ActionType = "retry"
-)
-```
+- [ ] **Task 3-1-1. ActionType 상수 4개 추가**
+  - **무엇**: `ask_user`, `summarize`, `search_memory`, `retry` 추가. 기존 3개는 유지
+  - **왜**: LLM이 이 타입들을 선택할 수 있어야 더 현실적인 시나리오 대응 가능
+  - **산출물**: `internal/planner/action_type.go` 수정
 
 ### Step 3-2. PlanResult 스키마 고정
 
-structured output (JSON schema 강제)으로 구현한다. LLM이 아래 스키마를 반드시 지켜서 출력하도록 system prompt에 JSON schema를 명시한다.
+- [ ] **Task 3-2-1. PlanResult struct 확장**
+  - **무엇**: `ReasoningSummary`, `Confidence`, `NextGoal` 필드 추가, JSON 태그 정의
+  - **왜**: LLM이 structured output으로 반환할 때 파싱 기준이 되는 타입. 이 시점에 고정하지 않으면 LLM planner 구현 중 계속 바뀜
+  - **산출물**: `internal/planner/plan_result.go` 수정
 
-```go
-type PlanResult struct {
-    Action           ActionType     `json:"action"`
-    ToolName         string         `json:"tool_name,omitempty"`
-    ToolInput        map[string]any `json:"tool_input,omitempty"`
-    ReasoningSummary string         `json:"reasoning_summary"`
-    Confidence       float64        `json:"confidence"`
-    NextGoal         string         `json:"next_goal,omitempty"`
-}
-```
-
-system prompt 예시:
-
-```
-당신은 agent planner입니다.
-반드시 아래 JSON schema에 맞게만 응답하세요.
-다른 텍스트는 절대 포함하지 마세요.
-
-{
-  "action": "<tool_call|respond_directly|finish|ask_user|summarize|search_memory|retry>",
-  "tool_name": "<tool name, action이 tool_call일 때만>",
-  "tool_input": { ... },
-  "reasoning_summary": "<판단 근거>",
-  "confidence": <0.0~1.0>,
-  "next_goal": "<다음 목표>"
-}
-```
+- [ ] **Task 3-2-2. PlanResult JSON schema 문자열 작성**
+  - **무엇**: system prompt에 삽입할 JSON schema 문자열 상수 또는 생성 함수
+  - **왜**: LLM에게 schema를 명시하지 않으면 hallucinated JSON 비율이 높아짐
+  - **산출물**: `internal/planner/schema.go`
 
 ### Step 3-3. LLM Planner 연결
 
-구현 포인트:
-- system prompt 설계 (action schema 강제 포함)
-- invalid JSON 대응: 파싱 실패 시 재생성 1회 시도 후 에러 처리
-- hallucination 최소화: 존재하지 않는 tool name 반환 시 에러 처리
+- [ ] **Task 3-3-1. OpenAI LLMClient 구현**
+  - **무엇**: `LLMClient` 인터페이스를 구현하는 OpenAI API 클라이언트
+  - **왜**: Phase 0에서 정의한 인터페이스의 실제 구현체. 이것이 있어야 LLMPlanner가 동작함
+  - **산출물**: `internal/llm/openai_client.go`
 
-```go
-type LLMPlanner struct {
-    client    LLMClient
-    toolSpecs []ToolSpec
-}
+- [ ] **Task 3-3-2. system prompt 빌더 구현**
+  - **무엇**: AgentState와 tool spec 목록을 받아 system prompt 문자열을 생성하는 함수
+  - **왜**: prompt 생성 로직이 planner 본체에 인라인으로 있으면 테스트와 수정이 어려움
+  - **산출물**: `internal/planner/prompt_builder.go`
 
-func (p *LLMPlanner) Plan(ctx context.Context, state AgentState) (PlanResult, error) {
-    messages := p.buildMessages(state) // system + user messages
-    resp, err := p.client.Complete(ctx, CompletionRequest{
-        Model:    "gpt-4o",
-        Messages: messages,
-    })
-    if err != nil {
-        return PlanResult{}, err
-    }
-    return p.parseResult(resp.Content)
-}
-```
+- [ ] **Task 3-3-3. LLMPlanner 구현**
+  - **무엇**: LLMClient를 주입받아 `Plan()` 메서드에서 LLM 호출 → JSON 파싱 → PlanResult 반환
+  - **왜**: mock planner를 실제 LLM 기반으로 교체하는 핵심 단계
+  - **산출물**: `internal/planner/llm_planner.go`
+
+- [ ] **Task 3-3-4. invalid JSON 재시도 로직 구현**
+  - **무엇**: JSON 파싱 실패 시 LLM 재호출 1회 후 에러 반환
+  - **왜**: LLM은 간헐적으로 형식 오류를 낼 수 있음. 1회 재시도로 대부분 해결되지만 무한 루프는 금지
+  - **산출물**: `LLMPlanner.parseResult()` 내부 또는 별도 retry 함수
+
+- [ ] **Task 3-3-5. hallucination 방어 로직 구현**
+  - **무엇**: PlanResult의 ToolName이 registry에 없을 경우 에러 처리
+  - **왜**: LLM이 존재하지 않는 tool 이름을 반환할 수 있으며 이를 그대로 실행하면 런타임 에러
+  - **산출물**: LLMPlanner 또는 ToolRouter 내 검증 코드
 
 ### Step 3-4. Token Usage 로깅
 
-LLM을 연결하는 이 시점부터 token 사용량을 기록한다. 이후 쓴 token을 소급 추적할 방법이 없으므로 지금 시작한다.
+- [ ] **Task 3-4-1. TokenUsage 타입 정의**
+  - **무엇**: prompt tokens, completion tokens, total tokens, 호출 시각, request id를 담는 struct
+  - **왜**: 타입이 없으면 로그가 비정형 문자열로 흩어짐. Phase 8 비용 정책의 기반 데이터
+  - **산출물**: `internal/llm/token_usage.go`
 
-기록 항목:
-- request id / prompt tokens / completion tokens / total tokens
-- planner 호출 횟수 / session 누적 token
-
-최소 구현은 구조화된 로그 출력으로 충분하다. 정책(비용 한도)은 Phase 8에서 추가한다.
+- [ ] **Task 3-4-2. LLM 호출마다 TokenUsage 기록**
+  - **무엇**: LLMClient 또는 LLMPlanner에서 응답 수신 후 TokenUsage를 구조화된 로그로 출력
+  - **왜**: LLM 연결 이후 소급 추적 불가능하므로 이 시점에 반드시 시작해야 함
+  - **산출물**: `openai_client.go` 또는 `llm_planner.go` 수정
 
 ### Step 3-5. Reflection
 
-결과가 질문에 충분한지 self-check하는 단계. LLM 별도 호출로 구현한다 (같은 LLMClient를 사용하되 reflection 전용 prompt를 쓴다).
+- [ ] **Task 3-5-1. ReflectResult 타입 정의**
+  - **무엇**: `Sufficient bool`, `MissingConditions []string`, `Suggestion string` 필드를 갖는 struct
+  - **왜**: Reflector 인터페이스 시그니처의 반환 타입
+  - **산출물**: `internal/planner/reflect_result.go`
 
-```go
-type Reflector interface {
-    Reflect(ctx context.Context, state AgentState) (ReflectResult, error)
-}
+- [ ] **Task 3-5-2. Reflector 인터페이스 정의**
+  - **무엇**: `Reflect(ctx, AgentState) (ReflectResult, error)` 인터페이스
+  - **왜**: reflection이 loop에 하드코딩되지 않도록 인터페이스로 분리
+  - **산출물**: `internal/planner/reflector.go`
 
-type ReflectResult struct {
-    Sufficient bool   `json:"sufficient"`
-    MissingConditions []string `json:"missing_conditions"`
-    Suggestion string `json:"suggestion"`
-}
-```
+- [ ] **Task 3-5-3. LLMReflector 구현**
+  - **무엇**: reflection 전용 prompt를 사용해 LLM을 호출하고 ReflectResult를 반환하는 구현체
+  - **왜**: planner와 동일한 LLMClient를 재사용하되 prompt가 달라야 함
+  - **산출물**: `internal/planner/llm_reflector.go`
 
-reflection prompt 핵심:
-
-```
-현재 tool 실행 결과가 사용자 질문에 충분히 답하는가?
-누락된 조건이 있다면 무엇인가?
-반드시 아래 JSON schema로 응답하라.
-```
-
-### 테스트
-
-- invalid JSON 반환 시 에러 처리 unit test
-- PlanResult 스키마: 각 action type별 필수 필드 검증
-- token logger: 호출마다 기록 여부 확인
-- reflection: sufficient=false 케이스에서 MissingConditions 포함 여부 검증
-
-### 완료 기준
-
-- planner가 실제 LLM으로 tool 선택과 finish 판단을 한다
-- LLM 호출마다 token 사용량이 로그에 남는다
-- invalid JSON 응답 시 재시도 후 에러를 반환한다
-- reflection 결과가 state에 반영된다
+- [ ] **Task 3-5-4. Reflection 결과를 AgentState에 반영**
+  - **무엇**: `Sufficient=false`일 때 loop가 추가 단계를 진행하도록 Runtime.Run()에 연결
+  - **왜**: reflection이 state에 반영되지 않으면 loop 제어에 아무 영향도 주지 않음
+  - **산출물**: `internal/agent/runtime.go` 수정
 
 ---
 
 ## Phase 4 — Session / State / Memory 분리
 
-### 목적
-
-LLM planner가 동작하는 상태에서, 대화 맥락과 메모리를 명확히 분리한다. 대화 히스토리를 메모리로 뭉개는 것이 흔한 실수다. 4가지를 코드 레벨에서 분리한다.
-
-| 종류 | 의미 | 생명주기 | 저장소 |
-|---|---|---|---|
-| Request State | 이번 실행 중 필요한 상태 | 요청 종료 시 폐기 | 메모리 |
-| Session State | 연속 대화 맥락 | 세션 유지 | Redis |
-| Working Memory | 문제 해결 중간 산출물 | 작업 종료 시 폐기 | 메모리 |
-| Long-term Memory | 사용자/도메인 장기 정보 | 영구 | Postgres |
-
 ### Step 4-1. Request State
 
-한 번의 실행에만 필요한 상태를 정의한다.
-
-```go
-type RequestState struct {
-    RequestID      string
-    UserInput      string
-    ToolResults    []ToolResult
-    ReasoningSteps []string
-    StartedAt      time.Time
-}
-```
+- [ ] **Task 4-1-1. RequestState struct 정의**
+  - **무엇**: RequestID, UserInput, ToolResults, ReasoningSteps, StartedAt 필드를 갖는 struct
+  - **왜**: `AgentState`에 섞여 있던 요청 범위 데이터를 명시적으로 분리. 이 경계가 없으면 session 데이터와 혼용됨
+  - **산출물**: `internal/state/request_state.go`
 
 ### Step 4-2. Session State
 
-같은 사용자의 연속 대화에서 이어지는 상태를 정의한다.
+- [ ] **Task 4-2-1. SessionState struct 정의**
+  - **무엇**: SessionID, RecentContext, ActiveGoal, LastUpdated 필드를 갖는 struct
+  - **왜**: 연속 대화의 맥락을 담는 단위. Request State와 분리되어야 session ID만으로 이전 대화를 복원할 수 있음
+  - **산출물**: `internal/state/session_state.go`
 
-```go
-type SessionState struct {
-    SessionID     string
-    RecentContext []Message
-    ActiveGoal    string
-    LastUpdated   time.Time
-}
-```
+- [ ] **Task 4-2-2. SessionRepository 인터페이스 정의**
+  - **무엇**: `Load(ctx, sessionID) (SessionState, error)`, `Save(ctx, sessionID, SessionState) error` 인터페이스
+  - **왜**: in-memory와 Redis 구현을 교체할 수 있도록 저장소를 인터페이스로 분리
+  - **산출물**: `internal/state/session_repository.go`
 
-저장소: 1차 in-memory map → 2차 Redis
+- [ ] **Task 4-2-3. InMemorySessionRepository 구현**
+  - **무엇**: map 기반 SessionRepository 구현체
+  - **왜**: Redis 연결 전에 동작 검증이 필요. 인터페이스가 같으므로 나중에 Redis로 교체 가능
+  - **산출물**: `internal/state/in_memory_session_repository.go`
+
+- [ ] **Task 4-2-4. RedisSessionRepository 구현**
+  - **무엇**: Redis에 SessionState를 JSON 직렬화하여 저장/조회하는 구현체
+  - **왜**: 프로세스 재시작 후에도 세션이 복원되어야 실제 대화 서비스가 가능함
+  - **산출물**: `internal/state/redis_session_repository.go`
 
 ### Step 4-3. Working Memory
 
-문제 해결 과정의 중간 산출물을 관리한다.
-
-```go
-type WorkingMemory struct {
-    SearchResults   []any
-    FilteredResults []any
-    Summaries       []string
-}
-```
+- [ ] **Task 4-3-1. WorkingMemory struct 정의**
+  - **무엇**: SearchResults, FilteredResults, Summaries 필드를 갖는 struct
+  - **왜**: tool 실행 중간 산출물이 AgentState에 뭉쳐 있으면 multi-agent 시나리오에서 데이터 경계가 불분명해짐
+  - **산출물**: `internal/state/working_memory.go`
 
 ### Step 4-4. Long-term Memory
 
-오래 보관할 사용자 선호나 도메인 정보를 다룬다.
+- [ ] **Task 4-4-1. Memory struct 정의**
+  - **무엇**: ID, UserID, Content, Tags, CreatedAt 필드를 갖는 struct
+  - **왜**: Postgres에 저장할 레코드 단위의 타입 정의
+  - **산출물**: `internal/memory/memory.go`
 
-```go
-type Memory struct {
-    ID        string
-    UserID    string
-    Content   string
-    Tags      []string
-    CreatedAt time.Time
-}
-```
+- [ ] **Task 4-4-2. MemoryRepository 인터페이스 정의**
+  - **무엇**: `Save(ctx, Memory) error`, `LoadRelevant(ctx, query) ([]Memory, error)` 인터페이스
+  - **왜**: Postgres 의존을 런타임 코드에서 격리. 테스트 시 in-memory로 교체 가능
+  - **산출물**: `internal/memory/memory_repository.go`
 
-저장소: Postgres
+- [ ] **Task 4-4-3. PostgresMemoryRepository 구현**
+  - **무엇**: Postgres에 Memory를 저장하고 태그 기반으로 조회하는 구현체
+  - **왜**: 장기 기억이 영구 저장소에 없으면 프로세스 재시작마다 소실됨
+  - **산출물**: `internal/memory/postgres_memory_repository.go`
 
 ### Step 4-5. Memory Manager
 
-runtime이 저장소를 직접 몰라도 된다.
+- [ ] **Task 4-5-1. MemoryManager 인터페이스 정의**
+  - **무엇**: `LoadSession`, `SaveSession`, `SaveMemory`, `LoadRelevantMemory` 메서드를 갖는 파사드 인터페이스
+  - **왜**: runtime이 session repository와 memory repository를 각각 직접 알면 의존이 넓어짐. 단일 인터페이스로 캡슐화
+  - **산출물**: `internal/memory/memory_manager.go`
 
-```go
-type MemoryManager interface {
-    LoadSession(ctx context.Context, sessionID string) (SessionState, error)
-    SaveSession(ctx context.Context, sessionID string, state SessionState) error
-    SaveMemory(ctx context.Context, userID string, content string, tags []string) error
-    LoadRelevantMemory(ctx context.Context, query string) ([]Memory, error)
-}
-```
-
-### 테스트
-
-- Session State: 동일 session ID로 맥락이 이어지는지 unit test
-- Memory Manager: in-memory 구현으로 저장 → 조회 unit test
-- Redis session: 저장 후 process 재시작해도 복원되는지 확인
-
-### 완료 기준
-
-- session ID 기준으로 대화 맥락이 이어진다
-- state와 memory가 코드 레벨에서 분리된다
-- Redis 연결 후 session이 process 재시작에도 복원된다
+- [ ] **Task 4-5-2. DefaultMemoryManager 구현**
+  - **무엇**: SessionRepository + MemoryRepository를 주입받아 MemoryManager 인터페이스를 구현하는 구조체
+  - **왜**: runtime은 MemoryManager만 알면 되고 구체 저장소는 주입으로 교체 가능
+  - **산출물**: `internal/memory/default_memory_manager.go`
 
 ---
 
 ## Phase 5 — Verifier / Retry / Concurrency
 
-### 목적
+### Step 5-1. Concurrency 기초
 
-실행 결과를 검증하고 필요하면 재시도한다. 여기서부터 Agent다운 느낌이 생긴다.
+- [ ] **Task 5-1-1. context.WithTimeout 패턴 실습 코드 작성**
+  - **무엇**: timeout이 발생했을 때 goroutine이 정리되는 패턴을 단독 테스트로 작성
+  - **왜**: Phase 6 병렬 실행에서 goroutine leak이 발생하지 않으려면 이 패턴을 먼저 이해해야 함
+  - **산출물**: `internal/agent/concurrency_test.go`
 
-Phase 6의 Multi-Agent에서 Worker를 병렬 실행하게 된다. 그 전에 goroutine과 context cancellation 기초를 이 단계에서 익혀둔다.
+### Step 5-2. Verifier 인터페이스
 
-아래 패턴을 코드 기반으로 확인하고 넘어간다:
+- [ ] **Task 5-2-1. VerifyStatus / VerifyResult 타입 정의**
+  - **무엇**: `done`, `retry`, `fail` 상태를 갖는 열거형과 VerifyResult struct
+  - **왜**: Verifier 인터페이스 반환 타입이 먼저 있어야 인터페이스를 정의할 수 있음
+  - **산출물**: `internal/verifier/verify_result.go`
 
-```go
-// context cancellation
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
+- [ ] **Task 5-2-2. Verifier 인터페이스 정의**
+  - **무엇**: `Verify(ctx, AgentState) (VerifyResult, error)` 인터페이스
+  - **왜**: loop가 verifier 구현에 의존하지 않도록 경계를 인터페이스로 정의
+  - **산출물**: `internal/verifier/verifier.go`
 
-// goroutine + channel
-results := make(chan ToolResult, len(tasks))
-for _, task := range tasks {
-    go func(t Task) {
-        results <- execute(ctx, t)
-    }(task)
-}
-```
+- [ ] **Task 5-2-3. SimpleVerifier 구현 및 테스트**
+  - **무엇**: FinalAnswer가 비어있으면 `retry`, tool 에러 있으면 `fail`, 그 외 `done` 반환하는 구현체와 unit test
+  - **왜**: loop에 verifier를 연결하기 전에 각 케이스가 올바르게 분기되는지 검증
+  - **산출물**: `internal/verifier/simple_verifier.go`, `simple_verifier_test.go`
 
-- `context.WithTimeout` / `context.WithCancel` 사용법
-- goroutine leak 방지 (done channel, context done)
-- WaitGroup 기본 패턴
+### Step 5-3. Retry Policy
 
-### Step 5-1. Verifier 인터페이스
+- [ ] **Task 5-3-1. RetryPolicy 인터페이스 정의**
+  - **무엇**: `ShouldRetry(err, attempt) bool`, `Delay(attempt) time.Duration` 인터페이스
+  - **왜**: retry 로직이 loop에 인라인으로 있으면 유형별로 정책을 다르게 적용하기 어려움
+  - **산출물**: `internal/agent/retry_policy.go`
 
-```go
-type Verifier interface {
-    Verify(ctx context.Context, state AgentState) (VerifyResult, error)
-}
+- [ ] **Task 5-3-2. LinearRetryPolicy 구현**
+  - **무엇**: 최대 횟수와 고정 대기 시간을 설정할 수 있는 RetryPolicy 구현체
+  - **왜**: 가장 단순한 정책으로 먼저 검증. Phase 8에서 더 정교한 정책으로 교체 가능
+  - **산출물**: `internal/agent/linear_retry_policy.go`
 
-type VerifyResult struct {
-    Status  VerifyStatus // done | retry | fail
-    Reason  string
-    Suggestion string
-}
-```
+- [ ] **Task 5-3-3. RetryPolicy unit test 작성**
+  - **무엇**: max 3회 초과 시 `ShouldRetry=false` 반환 검증, 각 attempt별 Delay 값 검증
+  - **왜**: 무한 재시도 방지가 정책 구현의 핵심이므로 경계 케이스를 반드시 테스트
+  - **산출물**: `internal/agent/linear_retry_policy_test.go`
 
-### Step 5-2. Retry 정책
+### Step 5-4. Failure 분류
 
-retry policy는 코드로 분리되어야 한다. loop 안에 인라인으로 쓰지 않는다.
-
-```go
-type RetryPolicy interface {
-    ShouldRetry(err error, attempt int) bool
-    Delay(attempt int) time.Duration
-}
-```
-
-- tool timeout → 1회 재시도
-- planner invalid output → 재생성
-- 빈 결과 → 다른 파라미터로 재시도
-
-### Step 5-3. Failure 분류
-
-| 유형 | 처리 |
-|---|---|
-| tool not found | 에러 상태로 종료 |
-| malformed params | planner 재호출 |
-| timeout | retry policy 적용 |
-| llm parse error | 재생성 시도 |
-| empty result | 파라미터 변경 후 재시도 |
-
-### 테스트
-
-- Verifier: done / retry / fail 각 케이스 unit test
-- Retry policy: 실패 유형별 재시도 횟수 제한 검증 (max 3회 초과 시 fail 반환)
-
-### 완료 기준
-
-- 실패 유형별 응답 정책이 코드로 분리되어 있다
-- 무한 재시도가 발생하지 않는다
-- context cancellation이 정상 동작한다 (timeout 시 goroutine이 정리된다)
+- [ ] **Task 5-4-1. 실패 유형별 처리 분기 구현**
+  - **무엇**: tool not found → 종료, malformed params → planner 재호출, timeout → retry, llm parse error → 재생성, empty result → 파라미터 변경 후 재시도 분기를 단일 함수로 정의
+  - **왜**: 분기가 여러 곳에 흩어지면 새로운 실패 유형 추가 시 누락이 발생함
+  - **산출물**: `internal/agent/failure_handler.go`
 
 ---
 
 ## Phase 6 — Multi-Agent Orchestration
 
-### 목적
+### Step 6-1. Task Contract
 
-단일 agent에서 Manager + Worker 구조로 확장한다. Phase 3에서 다루지 않은 Task Decomposition을 여기서 구현한다.
+- [ ] **Task 6-1-1. Task / TaskResult 타입 정의**
+  - **무엇**: `Task` struct (ID, Type, InputPayload, Dependencies), `TaskResult` struct (TaskID, Output, Error, Latency)
+  - **왜**: agent 간 데이터를 주고받는 contract. 이 타입이 없으면 Agent 인터페이스와 Decomposer 인터페이스를 정의할 수 없음
+  - **산출물**: `internal/orchestration/task.go`
 
-### 시나리오 (호텔 도메인)
+- [ ] **Task 6-1-2. TaskDecomposer 인터페이스 정의**
+  - **무엇**: `Decompose(ctx, userInput) ([]Task, error)` 인터페이스
+  - **왜**: Manager가 분해 로직에 의존하지 않도록 경계를 인터페이스로 분리
+  - **산출물**: `internal/orchestration/task_decomposer.go`
 
-```
-Manager Agent
-  → Search Agent   (호텔 목록 검색)
-  → Filter Agent   (조건 필터링)
-  → Ranking Agent  (평점 정렬)
-  → Summary Agent  (결과 요약)
-```
-
-### Step 6-1. Task Decomposition
-
-Manager가 사용자 요청을 하위 Task로 분해한다.
-
-```
-"서울 저렴한 호텔 찾고 평점 높은 순으로 보여줘"
-→ hotel_search → filter_by_price → sort_by_rating → summarize
-```
-
-```go
-type TaskDecomposer interface {
-    Decompose(ctx context.Context, userInput string) ([]Task, error)
-}
-```
+- [ ] **Task 6-1-3. LLMTaskDecomposer 구현**
+  - **무엇**: LLMClient를 사용해 사용자 입력을 Task 목록으로 분해하는 구현체
+  - **왜**: 실제 LLM 기반 분해가 있어야 호텔 시나리오 같은 현실적 입력 처리 가능
+  - **산출물**: `internal/orchestration/llm_task_decomposer.go`
 
 ### Step 6-2. Agent 인터페이스
 
-```go
-type Agent interface {
-    Name() string
-    CanHandle(task Task) bool
-    Execute(ctx context.Context, task Task) (TaskResult, error)
-}
-```
+- [ ] **Task 6-2-1. Agent 인터페이스 정의**
+  - **무엇**: `Name() string`, `CanHandle(Task) bool`, `Execute(ctx, Task) (TaskResult, error)` 인터페이스
+  - **왜**: Manager가 worker 구현체를 직접 알지 않아도 되도록 경계를 인터페이스로 정의
+  - **산출물**: `internal/orchestration/agent.go`
 
-### Step 6-3. Task Contract
+### Step 6-3. Worker Agent 구현
 
-agent 간 주고받는 데이터 형식 통일:
+- [ ] **Task 6-3-1. SearchAgent 구현**
+  - **무엇**: `hotel_search` task를 처리하는 worker agent
+  - **왜**: 시나리오의 첫 번째 단계. search_mock tool을 내부에서 사용
+  - **산출물**: `internal/orchestration/search_agent.go`
 
-```go
-type Task struct {
-    ID           string
-    Type         string
-    InputPayload map[string]any
-    Dependencies []string
-}
+- [ ] **Task 6-3-2. FilterAgent 구현**
+  - **무엇**: `filter_by_price` task를 처리하는 worker agent
+  - **왜**: SearchAgent 결과를 입력으로 받아 처리하는 의존 관계가 있는 task 실습
+  - **산출물**: `internal/orchestration/filter_agent.go`
 
-type TaskResult struct {
-    TaskID  string
-    Output  map[string]any
-    Error   error
-    Latency time.Duration
-}
-```
+- [ ] **Task 6-3-3. RankingAgent 구현**
+  - **무엇**: `sort_by_rating` task를 처리하는 worker agent
+  - **왜**: FilterAgent 결과를 받아 독립적으로 정렬 처리. 병렬 실행 적합 여부를 판단하는 실습
+  - **산출물**: `internal/orchestration/ranking_agent.go`
+
+- [ ] **Task 6-3-4. SummaryAgent 구현**
+  - **무엇**: 앞 단계 결과를 받아 LLM으로 요약하는 worker agent
+  - **왜**: 마지막 단계에서 LLM 호출이 포함된 task 처리 패턴 실습
+  - **산출물**: `internal/orchestration/summary_agent.go`
 
 ### Step 6-4. Manager Agent
 
-- 요청 분석 → Task 분해 → 필요한 worker 판단 → 실행 순서 결정 → 결과 병합
-- 독립 task는 goroutine으로 병렬 실행한다 (Phase 5에서 익힌 패턴 활용)
+- [ ] **Task 6-4-1. ManagerAgent 구현**
+  - **무엇**: TaskDecomposer와 worker 목록을 주입받아, task를 분해하고 실행 순서를 결정하며 독립 task는 goroutine으로 병렬 실행하고 결과를 병합하는 구조체
+  - **왜**: multi-agent orchestration의 핵심. Phase 5에서 익힌 concurrency 패턴을 여기서 실제 적용
+  - **산출물**: `internal/orchestration/manager_agent.go`
 
-```go
-type ManagerAgent struct {
-    decomposer TaskDecomposer
-    workers    []Agent
-}
-```
+- [ ] **Task 6-4-2. ManagerAgent unit test 작성**
+  - **무엇**: worker 선택 로직, 병렬 실행 여부, 결과 병합 검증
+  - **왜**: manager 로직이 잘못되면 task 순서 오류나 결과 누락이 발생하며 디버깅이 어려움
+  - **산출물**: `internal/orchestration/manager_agent_test.go`
 
 ### Step 6-5. Multi-Agent 실행 로그
 
-기록: 호출된 agent / 호출 순서 / 각 latency / 실패 지점
-
-### 테스트
-
-- Manager: worker 선택 로직 unit test
-- Task Decomposition: 입력별 task 목록 검증
-- Task Contract: 결과 병합 검증
-- 병렬 실행: 독립 task가 실제로 동시에 실행되는지 확인
-
-### 완료 기준
-
-- manager → worker 흐름이 동작한다
-- multi-agent trace를 로그로 볼 수 있다
-- 독립 task는 병렬 실행된다
+- [ ] **Task 6-5-1. 실행 trace 로그 구현**
+  - **무엇**: 호출된 agent 이름, 호출 순서, 각 latency, 실패 지점을 구조화된 로그로 출력
+  - **왜**: multi-agent 시나리오는 단일 agent보다 흐름 추적이 복잡하므로 로그가 없으면 디버깅 불가
+  - **산출물**: `internal/orchestration/trace.go`
 
 ---
 
 ## Phase 7 — Runtime 서비스화
 
-### 목적
-
-CLI 장난감 → API 서버 + 백그라운드 워커.
-
 ### Step 7-1. HTTP API
 
-```
-POST /v1/agent/run
-GET  /v1/tasks/{id}
-GET  /v1/sessions/{id}
-```
+- [ ] **Task 7-1-1. 요청/응답 타입 정의**
+  - **무엇**: `RunRequest`, `RunResponse`, `TaskStatusResponse` struct
+  - **왜**: JSON 직렬화 기준이 되는 타입 정의 없이는 핸들러 구현 불가
+  - **산출물**: `internal/api/types.go`
+
+- [ ] **Task 7-1-2. HTTP 핸들러 구현**
+  - **무엇**: `POST /v1/agent/run`, `GET /v1/tasks/{id}`, `GET /v1/sessions/{id}` 엔드포인트
+  - **왜**: CLI 입력기를 HTTP 인터페이스로 교체하는 핵심 단계
+  - **산출물**: `internal/api/handler.go`
+
+- [ ] **Task 7-1-3. 핸들러 integration test 작성**
+  - **무엇**: `httptest`를 사용해 각 엔드포인트의 요청/응답 검증
+  - **왜**: API 계층 변경 시 하위 호환성 깨짐을 조기에 감지
+  - **산출물**: `internal/api/handler_test.go`
 
 ### Step 7-2. Async Task 상태
 
-```
-queued → running → succeeded / failed
-```
+- [ ] **Task 7-2-1. AsyncTask 타입 및 상태 전이 구현**
+  - **무엇**: `queued`, `running`, `succeeded`, `failed` 상태와 상태 전이 검증 로직
+  - **왜**: 잘못된 상태 전이(예: queued → succeeded 직접 전환)를 런타임에 잡아야 함
+  - **산출물**: `internal/api/async_task.go`, `async_task_test.go`
 
 ### Step 7-3. Queue 구조
 
-- 1차: in-memory channel
-- 2차: Redis Stream 또는 Kafka
-- API 서버와 runtime worker를 논리적으로 분리
+- [ ] **Task 7-3-1. TaskQueue 인터페이스 정의**
+  - **무엇**: `Enqueue(task)`, `Dequeue() (task, error)` 인터페이스
+  - **왜**: in-memory channel과 Redis Stream을 교체할 수 있도록 인터페이스로 먼저 분리
+  - **산출물**: `internal/queue/task_queue.go`
+
+- [ ] **Task 7-3-2. InMemoryTaskQueue 구현**
+  - **무엇**: buffered channel 기반 TaskQueue 구현체
+  - **왜**: Redis 없이도 API 서버 + worker 분리 구조를 검증할 수 있음
+  - **산출물**: `internal/queue/in_memory_task_queue.go`
+
+- [ ] **Task 7-3-3. Worker 루프 구현**
+  - **무엇**: queue에서 task를 꺼내 runtime.Run()을 호출하고 결과를 저장하는 goroutine
+  - **왜**: API 서버와 실행 엔진을 논리적으로 분리하는 핵심 단계
+  - **산출물**: `internal/queue/worker.go`
 
 ### Step 7-4. Admin / Debug API
 
-최근 task 목록 / 실패 task 조회 / session dump / tool stats
-
-### 테스트
-
-- 각 엔드포인트 integration test
-- 상태 전이 검증: `queued → running → succeeded` 순서 확인
-
-### 완료 기준
-
-- CLI 없이 API로 실행 가능
-- task 상태를 조회할 수 있다
-- API 서버와 worker가 논리적으로 분리되어 있다
+- [ ] **Task 7-4-1. Admin 엔드포인트 구현**
+  - **무엇**: 최근 task 목록, 실패 task 조회, session dump, tool 호출 통계 엔드포인트
+  - **왜**: 운영 중 문제를 API로 조회할 수 없으면 디버깅이 로그 grep에만 의존하게 됨
+  - **산출물**: `internal/api/admin_handler.go`
 
 ---
 
 ## Phase 8 — 운영 고도화
 
-### 목적
-
-runtime을 실제 운영 관점에서 바라보는 감각을 붙인다.
-
 ### Step 8-1. Timeout / Cancellation
 
-- tool별 timeout 설정
-- 전체 request deadline 설정
-- context 계층 구조 설계
+- [ ] **Task 8-1-1. tool별 timeout 설정 구현**
+  - **무엇**: ToolRouter에 per-tool timeout 설정 추가
+  - **왜**: tool마다 응답 시간이 다르므로 단일 deadline으로는 과도하게 느리거나 빠르게 종료됨
+  - **산출물**: `internal/tools/router.go` 수정
 
-### Step 8-2. 비용 제어 (Phase 3 token 로깅 확장)
+- [ ] **Task 8-1-2. 전체 request deadline 설정**
+  - **무엇**: runtime.Run() 진입 시 전체 요청에 대한 context deadline 설정
+  - **왜**: tool 개별 timeout만으로는 loop 자체가 무한히 도는 것을 막을 수 없음
+  - **산출물**: `internal/agent/runtime.go` 수정
 
-- session별 token 누적량 추적
-- 비용 한도 초과 시 중단 정책
+### Step 8-2. 비용 제어
+
+- [ ] **Task 8-2-1. session별 token 누적 추적**
+  - **무엇**: Phase 3의 TokenUsage를 session 단위로 합산하는 집계 로직
+  - **왜**: 요청별 token이 아닌 session 전체 비용이 실제 운영 비용 단위임
+  - **산출물**: `internal/llm/token_tracker.go`
+
+- [ ] **Task 8-2-2. 비용 한도 초과 시 중단 정책 구현**
+  - **무엇**: session 누적 token이 임계값 초과 시 loop를 중단하는 정책
+  - **왜**: 한도 없이 두면 단일 session이 과도한 비용을 발생시킬 수 있음
+  - **산출물**: `internal/agent/cost_policy.go`
 
 ### Step 8-3. Observability
 
-- structured logging + trace ID
-- tool / planner latency metrics
-- OpenTelemetry: request → planner → tool → verifier trace 연결
+- [ ] **Task 8-3-1. structured logging + trace ID 적용**
+  - **무엇**: 모든 로그에 trace ID를 포함하는 logger 래퍼
+  - **왜**: trace ID 없이는 multi-agent 시나리오에서 요청 단위 로그 추적 불가
+  - **산출물**: `internal/observability/logger.go`
 
-### Step 8-4. 에러 분류
+- [ ] **Task 8-3-2. OpenTelemetry trace 연결**
+  - **무엇**: request → planner → tool → verifier 구간에 OTel span 추가
+  - **왜**: latency 병목이 어느 컴포넌트에 있는지 trace 없이는 측정 불가
+  - **산출물**: 각 컴포넌트에 OTel span 추가
 
-user error / system error / provider error / tool error / retryable error / fatal error
+### Step 8-4. 에러 분류 체계
+
+- [ ] **Task 8-4-1. 에러 타입 분류 정의**
+  - **무엇**: `user_error`, `system_error`, `provider_error`, `tool_error`, `retryable_error`, `fatal_error` 분류
+  - **왜**: 분류 없이는 알림, retry, 사용자 응답 메시지를 유형별로 다르게 처리할 수 없음
+  - **산출물**: `internal/agent/error_types.go`
 
 ### Step 8-5. Policy Layer
 
-- tool 사용 제한
-- 사용자별 max step 제한
-- 비용 한도 초과 시 중단
-
-### 완료 기준
-
-- tool별 timeout이 설정되어 있고 실제로 동작한다
-- session별 token 누적량을 조회할 수 있다
-- OTel trace가 planner ~ verifier까지 연결된다
+- [ ] **Task 8-5-1. PolicyLayer 구현**
+  - **무엇**: tool 사용 제한, 사용자별 max step, 비용 한도를 단일 Policy 인터페이스로 묶는 레이어
+  - **왜**: 정책이 여러 곳에 분산되면 정책 변경 시 누락이 생김
+  - **산출물**: `internal/agent/policy.go`
 
 ---
 
 ## Phase 9 — 문서화 / 포트폴리오
 
-### 목적
-
-이 커리큘럼 결과물을 설계 역량을 보여주는 자료로 정리한다.
-
 ### Step 9-1. README 고도화
 
-- 프로젝트 소개
-- 왜 프레임워크를 쓰지 않았는가
-- 핵심 구조 다이어그램
-- 실행 방법 + 예시 시나리오
+- [ ] **Task 9-1-1. README 핵심 구조 다이어그램 추가**
+  - **무엇**: 텍스트 기반 아키텍처 다이어그램 + 실행 방법 + 예시 시나리오 추가
+  - **왜**: README만 읽어도 전체 구조를 파악할 수 있어야 포트폴리오로서 가치가 있음
+  - **산출물**: `README.md` 갱신
 
 ### Step 9-2. 아키텍처 문서
 
-```
-docs/01-runtime-overview.md
-docs/02-planner.md
-docs/03-memory.md
-docs/04-tool-router.md
-docs/05-multi-agent.md
-```
+- [ ] **Task 9-2-1. 컴포넌트별 아키텍처 문서 작성**
+  - **무엇**: runtime overview, planner, memory, tool router, multi-agent 각각의 설계 의도와 경계를 설명하는 문서
+  - **왜**: 코드만 있으면 설계 의도가 드러나지 않음. 왜 이렇게 나눴는지를 설명해야 설계 역량을 보여줄 수 있음
+  - **산출물**: `docs/01-runtime-overview.md`, `docs/02-planner.md`, `docs/03-memory.md`, `docs/04-tool-router.md`, `docs/05-multi-agent.md`
 
 ### Step 9-3. 실행 시나리오 문서
 
-- 날씨 질의 흐름
-- 호텔 검색 흐름
-- 실패 후 retry 흐름
-- multi-agent 흐름
-
-### 완료 기준
-
-- README만 읽어도 전체 구조를 이해할 수 있다
-- 시나리오 문서에 실제 실행 로그 예시가 포함된다
-
----
-
-## 단계별 산출물 체크리스트
-
-매 Phase마다 아래 4개를 반드시 남긴다.
-
-- [ ] 동작하는 코드
-- [ ] 테스트 (unit 또는 integration)
-- [ ] docs 또는 README 갱신
-- [ ] 다음 Phase TODO
-
-이 4개 없이 다음 단계로 넘어가지 않는다.
-
----
-
-## 추천 진행 순서 (Sprint)
-
-Phase 순서 변경(Planner/LLM 먼저, Session/Memory 나중)에 맞게 조정된 Sprint 계획이다.
-
-### Sprint 1 — 기반 세팅
-
-- docker-compose.yml 작성 (Redis, Postgres)
-- `.env.example` 작성, OPENAI_API_KEY 항목 포함
-- `docker-compose up` 후 Redis/Postgres 접속 확인
-- glossary.md 작성
-- architecture-overview.md 작성
-- 프로젝트 디렉터리 구조 초기화, `go build ./...` 통과
-
-### Sprint 2 — 최소 Loop
-
-- CLI 입력기
-- AgentState 정의 (LastToolCall 포함)
-- mock planner 구현
-- mock executor 구현
-- loop 종료 조건 (finish / max step / fatal error)
-
-### Sprint 3 — Tool 시스템
-
-- Tool 인터페이스 정의
-- calculator tool
-- weather_mock tool
-- search_mock tool
-- Tool Registry 구현
-- Tool Router 구현
-- `docs/tools.md` 작성
-- Tool 실행 로그
-
-### Sprint 4 — LLM Planner 연결
-
-- OpenAI API LLMClient 구현
-- structured output 기반 PlanResult 스키마 고정
-- LLM Planner 구현 (system prompt + JSON schema 강제)
-- invalid JSON 대응 (재시도 1회)
-- ActionType 확장 (ask_user, summarize, search_memory, retry 추가)
-- Token Usage 로깅
-- Reflection 구현 (별도 LLM 호출)
-
-### Sprint 5 — Session / Memory
-
-- Request State 분리
-- Session State 정의 및 in-memory 구현
-- Working Memory 구현
-- Long-term Memory 구조 정의
-- Redis 연결, Session State 이전
-- Postgres 연결, Memory 저장
-- Memory Manager 인터페이스 구현
-- session restore 검증 (process 재시작 후 맥락 복원)
-
-### Sprint 6 — Verifier / Retry
-
-- goroutine / context cancellation 기초 확인
-- Verifier 인터페이스 구현
-- Retry Policy 분리 구현
-- Failure 분류 및 처리
-- context timeout 동작 검증
-
-### Sprint 7 — Multi-Agent
-
-- Agent 인터페이스 분리
-- Task / TaskResult Contract 정의
-- TaskDecomposer 구현
-- Worker Agent 구현 (Search, Filter, Ranking, Summary)
-- Manager Agent 구현 (병렬 실행 포함)
-- multi-agent trace 로그
-
-### Sprint 8 — 서비스화
-
-- HTTP gateway 구현
-- async task 상태 모델 (queued → running → succeeded/failed)
-- in-memory queue → worker 연결
-- Admin / Debug API 추가
-
-### Sprint 9 — 운영 + 문서화
-
-- timeout / cancellation 정책 적용
-- token 비용 추적 및 한도 정책
-- OTel trace 연결
-- 에러 분류 체계 정비
-- README 고도화
-- 아키텍처 문서 작성
-- 시나리오 문서화
-
----
-
-## AI 도구 활용 원칙
-
-Claude Code 같은 도구는 역할을 나눠 쓰는 것이 좋다.
-
-### Architect 역할
-
-구조와 경계를 설계할 때 활용한다.
-
-- 디렉터리 구조 설계
-- 인터페이스 설계
-- 책임 분리
-- 경계 정의
-
-예시 요청:
-- "planner, executor, state 경계를 어떻게 나눌지 설계해줘"
-- "tool registry 인터페이스 설계해줘"
-- "session state와 request state를 어떻게 분리할지 설명해줘"
-
-### Implementer 역할
-
-코드를 직접 작성할 때 활용한다.
-
-- Go 코드 작성
-- 테스트 코드 작성
-- handler 구현
-- repository 구현
-
-예시 요청:
-- "Go로 Tool 인터페이스와 registry 구현해줘"
-- "Redis 기반 session repository 작성해줘"
-- "structured output 기반 LLM planner 구현해줘"
-
-### 원칙
-
-- Architect 단계를 거치지 않고 Implementer부터 쓰면 인터페이스 경계가 흐려진다.
-- 구현을 먼저 받아도, 설계 의도를 직접 이해하지 않으면 다음 단계에서 막힌다.
-- 도구는 보조다. 각 Phase의 완료 기준은 직접 판단한다.
-
----
-
-## 하지 말아야 할 것
-
-처음부터 하면 안 되는 것:
-
-- 여러 LLM provider 동시 지원 (provider 고정 먼저)
-- 처음부터 MSA 구조
-- 처음부터 Kubernetes
-- 브라우저 agent
-- task decomposition을 Phase 1~2에서 시도 (loop가 안정된 다음에)
-
-먼저 loop → state → planner → tool router → verifier → session memory 순으로 엔진을 만든다.
-엔진이 된 다음에 서비스화로 간다.
+- [ ] **Task 9-3-1. 시나리오별 흐름 문서 작성**
+  - **무엇**: 날씨 질의, 호텔 검색, 실패 후 retry, multi-agent 흐름을 단계별로 기술하고 실제 실행 로그 예시 포함
+  - **왜**: 실제 동작 증거가 없는 포트폴리오는 신뢰도가 낮음. 시나리오 + 로그 조합이 핵심
+  - **산출물**: `docs/scenarios/`
