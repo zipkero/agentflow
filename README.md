@@ -159,33 +159,33 @@ Phase 9  문서화 / 포트폴리오
 
 ### Step 0-3. 프로젝트 초기화
 
-- [ ] **Task 0-3-1. 디렉터리 구조 생성**
+- [x] **Task 0-3-1. 디렉터리 구조 생성**
   - **무엇**: `cmd/agent-cli/`, `internal/agent/`, `internal/planner/`, `internal/executor/`, `internal/state/`, `internal/tools/`, `docs/` 생성
   - **왜**: 경계를 디렉터리로 물리적으로 분리해두어야 이후 패키지 간 의존 방향을 강제할 수 있음
   - **산출물**: 디렉터리 트리
 
-- [ ] **Task 0-3-2. 각 패키지 stub 파일 생성 + go build 통과**
+- [x] **Task 0-3-2. 각 패키지 stub 파일 생성 + go build 통과**
   - **무엇**: 각 디렉터리에 `package` 선언만 있는 빈 `.go` 파일 생성
   - **왜**: `go build ./...` 통과 여부로 패키지 경계가 올바른지 확인
   - **산출물**: 각 패키지의 빈 stub 파일
 
 ### Step 0-4. 용어 정리
 
-- [ ] **Task 0-4-1. 핵심 용어 glossary 작성**
+- [x] **Task 0-4-1. 핵심 용어 glossary 작성**
   - **무엇**: Agent, Runtime, Planner, Executor, Tool, Tool Router, Session, Memory, Verifier, Task, Step 각각의 정의
   - **왜**: 용어가 코드 간에 달리 쓰이면 인터페이스 경계 설계 시 혼란 발생
   - **산출물**: `docs/glossary.md`
 
 ### Step 0-5. 전체 흐름도
 
-- [ ] **Task 0-5-1. 아키텍처 개요 문서 작성**
+- [x] **Task 0-5-1. 아키텍처 개요 문서 작성**
   - **무엇**: `User Request → Runtime → Planner → Tool Router → Executor → Memory Update → Verifier → Response` 흐름을 텍스트 다이어그램으로 기술
   - **왜**: 각 컴포넌트의 위치와 데이터 흐름을 먼저 그려야 인터페이스 설계 시 경계를 잘못 긋지 않음
   - **산출물**: `docs/architecture-overview.md`
 
 ### Step 0-6. 범위 고정
 
-- [ ] **Task 0-6-1. 범위 문서 작성**
+- [x] **Task 0-6-1. 범위 문서 작성**
   - **무엇**: 할 것(QA/Search/Planning형)과 하지 않을 것(브라우저 자동조작, 코드 수정형, 자율 배포) 명시
   - **왜**: 나중에 scope creep을 막기 위해 문서로 고정
   - **산출물**: `docs/scope.md`
