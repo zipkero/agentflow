@@ -27,16 +27,15 @@ User Input
 │       │                      │              │
 │       └──────── state 반영 ◀─┘              │
 │                      │                      │
-│               ┌──────▼──────┐               │
-│               │   Verifier  │               │
-│               └──────┬──────┘               │
-│                      │                      │
-│            done/retry/fail 판단             │
+│              IsFinished 판단                │
+│         (action / maxStep / error)          │
 └─────────────────────────────────────────────┘
     │
     ▼
 Response (FinalAnswer)
 ```
+
+> **Phase 5 예정**: `Verifier` 컴포넌트가 도입되면 `IsFinished` 판단 앞에 "결과가 충분한가" 평가 단계가 추가된다.
 
 ---
 
@@ -91,27 +90,38 @@ Tool Router 처리 흐름:
 ### 4. ToolResult → AgentState 반영
 
 Executor가 반환한 `ToolResult`는 `AgentState.ToolResults`에 추가된다.
-`StepCount`가 1 증가하고, Verifier가 상태를 평가한다.
+`StepCount`가 1 증가하고, Runtime이 다음 loop 시작 시 `IsFinished`로 종료 여부를 판단한다.
 
-### 5. Verifier → finish 판단
+> **Phase 5 예정**: Verifier 도입 후 이 시점에 "결과 충분성 평가" 단계가 추가된다.
 
-Verifier는 현재 AgentState를 보고 세 가지 중 하나를 반환한다.
+### 5. Runtime → finish 판단
 
-| 결과 | 조건 | Runtime 행동 |
-|------|------|-------------|
-| `done` | FinalAnswer가 있고 결과가 충분함 | loop 종료, 응답 반환 |
-| `retry` | 결과가 부족하거나 비어있음 | Planner 재호출 |
-| `fail` | 복구 불가능한 에러 발생 | loop 종료, 에러 반환 |
+Runtime은 Planner로부터 `plan`을 받은 직후 `IsFinished`를 호출해 loop 종료 여부를 판단한다.
+`IsFinished`는 `plan`과 현재 `AgentState`를 인자로 받아 `FinishResult`를 반환한다.
+
+```
+plan = planner.Plan(ctx, state)
+    ↓
+IsFinished(plan, state, maxStep)   ← plan 받은 직후, 단 한 번만 호출
+    ↓ Finished == false
+executor.Execute(ctx, plan)
+    ↓
+state 반영 → 다음 loop
+```
+
+> **Phase 5 예정**: Verifier 컴포넌트가 도입되면 "결과가 충분한가"를 별도로 평가한다.
+> Phase 1에서는 Planner의 ActionType과 AgentState.Status만으로 종료를 판단한다.
 
 ### 6. Loop 종료 조건
 
-아래 조건 중 하나라도 충족되면 loop를 종료한다.
+아래 조건 중 하나라도 충족되면 loop를 종료한다. `IsFinished`가 이 판단을 담당한다.
 
-1. Planner가 `finish` ActionType 반환
-2. Planner가 `respond_directly` ActionType 반환하고 FinalAnswer 작성 완료
-3. `StepCount >= MaxStep` (무한 루프 방지)
-4. Verifier가 `fail` 반환
-5. context deadline 초과
+| 조건 | FinishReason | 결과 Status |
+|------|-------------|-------------|
+| Planner가 `finish` ActionType 반환 | `action_finish` | `StatusFinished` |
+| Planner가 `respond_directly` 반환 + FinalAnswer 채워짐 | `direct_response` | `StatusFinished` |
+| `StepCount >= MaxStep` (무한 루프 방지) | `max_step` | `StatusFailed` |
+| `Status == StatusFailed` (외부에서 이미 실패 처리됨) | `fatal_error` | `StatusFailed` |
 
 ---
 

@@ -265,9 +265,10 @@ Phase 10 문서화 / 포트폴리오
 
 ### Step 1-5. Finish 조건 + Runtime Loop
 
-- [ ] **Task 1-5-1. Finish 조건 정의**
+- [x] **Task 1-5-1. Finish 조건 정의**
   - **무엇**: `finish` action / max step 초과 / fatal error / `respond_directly` 완료 4개 조건을 판별 함수로 정의
   - **왜**: 루프 종료 로직이 loop 코드에 인라인으로 흩어지면 테스트와 유지보수가 어려움
+  - **비고**: `IsFinished(plan, state, maxStep) FinishResult` — 종료 여부와 이유를 함께 반환. Runtime이 이 결과로 Status 전이를 결정함
   - **산출물**: `internal/agent/finish.go`
 
 - [ ] **Task 1-5-2. Runtime.Run() 루프 구현**

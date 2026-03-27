@@ -132,8 +132,10 @@ Multi-Agent 시나리오에서 분해된 작업 단위.
 ## Step
 
 Runtime Loop의 단일 반복(iteration).
-한 Step은 `plan → execute → verify` 한 사이클을 의미한다.
+한 Step은 `plan → execute → state 반영` 한 사이클을 의미한다.
 `AgentState.StepCount`로 몇 번째 step인지 추적하며, 최대 step 초과 시 loop를 종료한다.
+
+> **Phase 5 예정**: Verifier 도입 후 `plan → execute → verify → state 반영` 으로 확장된다.
 
 ---
 
