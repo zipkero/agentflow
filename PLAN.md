@@ -172,7 +172,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 2-1. Tool 인터페이스
 
-- [ ] **Task 2-1-1. Schema 타입 정의**
+- [x] **Task 2-1-1. Schema 타입 정의**
   - **무엇**: tool 입력 스키마를 표현하는 타입 (필드명, 타입, 필수 여부)
   - **왜**: Tool 인터페이스의 `InputSchema()` 반환 타입이 필요하고, Phase 3에서 LLM에게 tool spec을 전달할 때도 사용됨
   - **산출물**: `internal/tools/schema.go`
