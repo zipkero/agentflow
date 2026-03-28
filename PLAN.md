@@ -177,7 +177,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: Tool 인터페이스의 `InputSchema()` 반환 타입이 필요하고, Phase 3에서 LLM에게 tool spec을 전달할 때도 사용됨
   - **산출물**: `internal/tools/schema.go`
 
-- [ ] **Task 2-1-2. Tool 인터페이스 정의**
+- [x] **Task 2-1-2. Tool 인터페이스 정의**
   - **무엇**: `Name()`, `Description()`, `InputSchema()`, `Execute(ctx, map[string]any) (ToolResult, error)` 인터페이스
   - **왜**: 모든 tool이 이 인터페이스를 구현하면 registry가 구현체를 몰라도 됨
   - **산출물**: `internal/tools/tool.go`
