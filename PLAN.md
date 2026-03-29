@@ -216,7 +216,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 2-3. Tool Router
 
-- [ ] **Task 2-3-1. ToolRouter 구현**
+- [x] **Task 2-3-1. ToolRouter 구현**
   - **무엇**: PlanResult를 받아 registry에서 tool을 조회하고 실행하는 컴포넌트. 미등록 tool, input validation 실패, execute 에러를 각각 다르게 처리
   - **왜**: planner와 tool 실행을 직접 연결하면 planner가 tool 구현에 의존하게 됨. router가 그 사이를 중재
   - **산출물**: `internal/tools/router.go`
@@ -242,7 +242,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 2-6. 에러 타입 분류
 
-- [ ] **Task 2-6-1. AgentError 타입 정의**
+- [x] **Task 2-6-1. AgentError 타입 정의**
   - **무엇**: `retryable`/`fatal` 구분과 `tool_not_found`, `input_validation_failed`, `tool_execution_failed`, `llm_parse_error` 서브타입을 갖는 에러 타입 정의
   - **왜**: Phase 2 ToolRouter에서 이미 에러 유형을 다르게 처리하고 있음. 상수화된 타입이 없으면 Phase 5 retry 정책에서 "어떤 에러에 재시도할지" 판단 기준이 없음. `tool_not_found`는 fatal, `tool_execution_failed`는 retryable 같은 구분이 이 시점에 고정되어야 함
   - **산출물**: `internal/agent/errors.go`
