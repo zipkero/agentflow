@@ -199,7 +199,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: 외부 API 의존 없이 tool 인터페이스와 registry를 검증할 수 있는 가장 단순한 tool
   - **산출물**: `internal/tools/calculator/calculator.go`
 
-- [ ] **Task 2-2-4. weather_mock tool 구현**
+- [x] **Task 2-2-4. weather_mock tool 구현**
   - **무엇**: 도시 이름을 받아 고정된 날씨 데이터를 반환하는 mock tool
   - **왜**: planner가 tool을 선택하는 시나리오를 현실적으로 테스트하기 위해
   - **산출물**: `internal/tools/weather_mock/weather_mock.go`
