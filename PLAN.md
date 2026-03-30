@@ -228,7 +228,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 2-4. Tool Spec 문서화
 
-- [ ] **Task 2-4-1. docs/tools.md 작성**
+- [x] **Task 2-4-1. docs/tools.md 작성**
   - **무엇**: calculator, weather_mock, search_mock 각각의 name, description, 입력 스키마, 출력 형식, 에러 케이스 정리
   - **왜**: Phase 3에서 LLM system prompt에 tool spec을 넣을 때 이 문서가 기준이 됨
   - **산출물**: `docs/tools.md`
