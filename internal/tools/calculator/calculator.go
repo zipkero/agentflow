@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode"
 
-	"agentflow/internal/state"
 	"agentflow/internal/tools"
+	"agentflow/internal/types"
 )
 
 // Calculator 는 수식 문자열을 받아 계산 결과를 반환하는 Tool 구현체다.
@@ -39,22 +39,22 @@ func (c *Calculator) InputSchema() tools.Schema {
 	}
 }
 
-func (c *Calculator) Execute(_ context.Context, input map[string]any) (state.ToolResult, error) {
+func (c *Calculator) Execute(_ context.Context, input map[string]any) (types.ToolResult, error) {
 	raw, ok := input["expression"]
 	if !ok {
-		return state.ToolResult{ToolName: c.Name(), IsError: true, ErrMsg: "expression 필드가 없습니다"}, nil
+		return types.ToolResult{ToolName: c.Name(), IsError: true, ErrMsg: "expression 필드가 없습니다"}, nil
 	}
 	expr, ok := raw.(string)
 	if !ok {
-		return state.ToolResult{ToolName: c.Name(), IsError: true, ErrMsg: "expression 은 string 이어야 합니다"}, nil
+		return types.ToolResult{ToolName: c.Name(), IsError: true, ErrMsg: "expression 은 string 이어야 합니다"}, nil
 	}
 
 	result, err := evaluate(strings.TrimSpace(expr))
 	if err != nil {
-		return state.ToolResult{ToolName: c.Name(), IsError: true, ErrMsg: err.Error()}, nil
+		return types.ToolResult{ToolName: c.Name(), IsError: true, ErrMsg: err.Error()}, nil
 	}
 
-	return state.ToolResult{
+	return types.ToolResult{
 		ToolName: c.Name(),
 		Output:   strconv.FormatFloat(result, 'f', -1, 64),
 	}, nil

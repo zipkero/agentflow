@@ -7,6 +7,7 @@ import (
 	"agentflow/internal/executor"
 	"agentflow/internal/planner"
 	"agentflow/internal/state"
+	"agentflow/internal/types"
 )
 
 // Runtime 은 plan → execute → state 반영 → finish 판단 루프를 실행하는 조율자다.
@@ -39,7 +40,7 @@ func (r *Runtime) Run(ctx context.Context, s state.AgentState) (state.AgentState
 		// 2. respond_directly 이면 FinalAnswer 를 먼저 채운다.
 		//    IsFinished 가 plan 반영 전 state 를 기준으로 판단하므로
 		//    respond_directly + FinalAnswer 케이스는 여기서 채운 뒤 검사한다.
-		if plan.ActionType == planner.ActionRespondDirectly {
+		if plan.ActionType == types.ActionRespondDirectly {
 			s.FinalAnswer = plan.Reasoning
 		}
 

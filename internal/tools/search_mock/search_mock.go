@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"agentflow/internal/state"
 	"agentflow/internal/tools"
+	"agentflow/internal/types"
 )
 
 // searchResult 는 단일 검색 결과 항목이다.
@@ -63,14 +63,14 @@ func (s *SearchMock) InputSchema() tools.Schema {
 	}
 }
 
-func (s *SearchMock) Execute(_ context.Context, input map[string]any) (state.ToolResult, error) {
+func (s *SearchMock) Execute(_ context.Context, input map[string]any) (types.ToolResult, error) {
 	raw, ok := input["query"]
 	if !ok {
-		return state.ToolResult{ToolName: s.Name(), IsError: true, ErrMsg: "query 필드가 없습니다"}, nil
+		return types.ToolResult{ToolName: s.Name(), IsError: true, ErrMsg: "query 필드가 없습니다"}, nil
 	}
 	query, ok := raw.(string)
 	if !ok {
-		return state.ToolResult{ToolName: s.Name(), IsError: true, ErrMsg: "query 는 string 이어야 합니다"}, nil
+		return types.ToolResult{ToolName: s.Name(), IsError: true, ErrMsg: "query 는 string 이어야 합니다"}, nil
 	}
 
 	normalized := strings.ToLower(strings.TrimSpace(query))
@@ -84,7 +84,7 @@ func (s *SearchMock) Execute(_ context.Context, input map[string]any) (state.Too
 	}
 
 	if len(matched) == 0 {
-		return state.ToolResult{
+		return types.ToolResult{
 			ToolName: s.Name(),
 			IsError:  true,
 			ErrMsg:   fmt.Sprintf("'%s' 에 대한 검색 결과가 없습니다", query),
@@ -96,7 +96,7 @@ func (s *SearchMock) Execute(_ context.Context, input map[string]any) (state.Too
 		fmt.Fprintf(&sb, "[%d] %s\n    %s\n    %s\n", i+1, r.Title, r.Snippet, r.URL)
 	}
 
-	return state.ToolResult{
+	return types.ToolResult{
 		ToolName: s.Name(),
 		Output:   strings.TrimRight(sb.String(), "\n"),
 	}, nil

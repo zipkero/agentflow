@@ -250,7 +250,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 2-7. 공유 타입 패키지 분리
 
-- [ ] **Task 2-7-1. `internal/types` 패키지 생성 및 PlanResult / ToolResult 이동**
+- [x] **Task 2-7-1. `internal/types` 패키지 생성 및 PlanResult / ToolResult 이동**
   - **무엇**: `PlanResult`를 `internal/planner`에서, `ToolResult`를 `internal/state`에서 `internal/types`로 이동
   - **왜**: Phase 3에서 `AgentState.CurrentPlan PlanResult` 필드를 추가하면 `state → planner → state` 순환 참조가 발생함. LLMPlanner 구현 이전에 타입 분리를 완료해야 Phase 3 전체 빌드가 안정적임. 이 Task를 Phase 3 중간에 두면 LLMPlanner 구현 도중 전체 빌드가 깨지는 시점이 생김
   - **비고**: `internal/state`, `internal/planner`, `internal/executor`가 모두 `internal/types`를 참조. `internal/types`는 다른 internal 패키지를 참조하지 않음. **파급 주의**: `PlanResult`를 참조하는 `router.go`, `executor.go`, `mock_executor.go`, `runtime.go`, `finish.go`, `planner/*.go` 전체 수정 필요. 이 Task 완료 후 `go build ./...` + `go test ./...` 전체 통과를 반드시 확인하고 Phase 3으로 진행한다

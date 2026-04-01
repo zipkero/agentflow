@@ -1,8 +1,8 @@
 package agent
 
 import (
-	"agentflow/internal/planner"
 	"agentflow/internal/state"
+	"agentflow/internal/types"
 )
 
 const DefaultMaxStep = 10
@@ -33,18 +33,18 @@ type FinishResult struct {
 // plan 은 이번 step에서 Planner 가 반환한 결정이다.
 // s 는 plan 이 반영되기 전의 AgentState 다.
 // maxStep 이 0 이하면 DefaultMaxStep 을 사용한다.
-func IsFinished(plan planner.PlanResult, s state.AgentState, maxStep int) FinishResult {
+func IsFinished(plan types.PlanResult, s state.AgentState, maxStep int) FinishResult {
 	if maxStep <= 0 {
 		maxStep = DefaultMaxStep
 	}
 
 	// 1. Planner 가 명시적으로 finish 를 선택한 경우
-	if plan.ActionType == planner.ActionFinish {
+	if plan.ActionType == types.ActionFinish {
 		return FinishResult{Finished: true, Reason: FinishByAction}
 	}
 
 	// 2. respond_directly 이고 FinalAnswer 가 이미 채워진 경우
-	if plan.ActionType == planner.ActionRespondDirectly && s.FinalAnswer != "" {
+	if plan.ActionType == types.ActionRespondDirectly && s.FinalAnswer != "" {
 		return FinishResult{Finished: true, Reason: FinishByDirectResponse}
 	}
 

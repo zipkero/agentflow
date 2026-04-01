@@ -8,6 +8,7 @@ import (
 	"agentflow/internal/executor"
 	"agentflow/internal/planner"
 	"agentflow/internal/state"
+	"agentflow/internal/types"
 )
 
 func newRuntime(p planner.Planner, e executor.Executor, maxStep int) *Runtime {
@@ -25,11 +26,11 @@ func initialState() state.AgentState {
 
 // tool_call 1회 후 ActionFinish 로 종료되는 케이스
 func TestRun_ToolCallThenFinish(t *testing.T) {
-	p := planner.NewMockPlanner([]planner.PlanResult{
-		{ActionType: planner.ActionToolCall, ToolName: "search", ToolInput: map[string]any{"q": "go"}},
-		{ActionType: planner.ActionFinish},
+	p := planner.NewMockPlanner([]types.PlanResult{
+		{ActionType: types.ActionToolCall, ToolName: "search", ToolInput: map[string]any{"q": "go"}},
+		{ActionType: types.ActionFinish},
 	})
-	e := executor.NewMockExecutor([]state.ToolResult{
+	e := executor.NewMockExecutor([]types.ToolResult{
 		{ToolName: "search", Output: "result1"},
 	})
 	rt := newRuntime(p, e, 10)
@@ -56,12 +57,12 @@ func TestRun_ToolCallThenFinish(t *testing.T) {
 // MaxStep 초과로 강제 종료되는 케이스
 func TestRun_MaxStepExceeded(t *testing.T) {
 	// tool_call 만 계속 반환 — MockPlanner 소진 후 ActionFinish 이지만 MaxStep=2 가 먼저
-	p := planner.NewMockPlanner([]planner.PlanResult{
-		{ActionType: planner.ActionToolCall, ToolName: "tool"},
-		{ActionType: planner.ActionToolCall, ToolName: "tool"},
-		{ActionType: planner.ActionToolCall, ToolName: "tool"},
+	p := planner.NewMockPlanner([]types.PlanResult{
+		{ActionType: types.ActionToolCall, ToolName: "tool"},
+		{ActionType: types.ActionToolCall, ToolName: "tool"},
+		{ActionType: types.ActionToolCall, ToolName: "tool"},
 	})
-	e := executor.NewMockExecutor([]state.ToolResult{
+	e := executor.NewMockExecutor([]types.ToolResult{
 		{ToolName: "tool", Output: "r1"},
 		{ToolName: "tool", Output: "r2"},
 		{ToolName: "tool", Output: "r3"},
@@ -84,8 +85,8 @@ func TestRun_MaxStepExceeded(t *testing.T) {
 // respond_directly 로 FinalAnswer 가 세팅되고 종료되는 케이스
 func TestRun_RespondDirectly(t *testing.T) {
 	const answer = "42"
-	p := planner.NewMockPlanner([]planner.PlanResult{
-		{ActionType: planner.ActionRespondDirectly, Reasoning: answer},
+	p := planner.NewMockPlanner([]types.PlanResult{
+		{ActionType: types.ActionRespondDirectly, Reasoning: answer},
 	})
 	e := executor.NewMockExecutor(nil)
 	rt := newRuntime(p, e, 10)
@@ -111,8 +112,8 @@ func TestRun_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // 즉시 취소
 
-	p := planner.NewMockPlanner([]planner.PlanResult{
-		{ActionType: planner.ActionToolCall, ToolName: "tool"},
+	p := planner.NewMockPlanner([]types.PlanResult{
+		{ActionType: types.ActionToolCall, ToolName: "tool"},
 	})
 	e := executor.NewMockExecutor(nil)
 	rt := newRuntime(p, e, 10)

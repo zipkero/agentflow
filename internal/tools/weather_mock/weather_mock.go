@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"agentflow/internal/state"
 	"agentflow/internal/tools"
+	"agentflow/internal/types"
 )
 
 // weatherData 는 도시별 고정 날씨 데이터다.
@@ -57,20 +57,20 @@ func (w *WeatherMock) InputSchema() tools.Schema {
 	}
 }
 
-func (w *WeatherMock) Execute(_ context.Context, input map[string]any) (state.ToolResult, error) {
+func (w *WeatherMock) Execute(_ context.Context, input map[string]any) (types.ToolResult, error) {
 	raw, ok := input["city"]
 	if !ok {
-		return state.ToolResult{ToolName: w.Name(), IsError: true, ErrMsg: "city 필드가 없습니다"}, nil
+		return types.ToolResult{ToolName: w.Name(), IsError: true, ErrMsg: "city 필드가 없습니다"}, nil
 	}
 	city, ok := raw.(string)
 	if !ok {
-		return state.ToolResult{ToolName: w.Name(), IsError: true, ErrMsg: "city 는 string 이어야 합니다"}, nil
+		return types.ToolResult{ToolName: w.Name(), IsError: true, ErrMsg: "city 는 string 이어야 합니다"}, nil
 	}
 
 	key := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(city), " ", ""))
 	data, found := mockDB[key]
 	if !found {
-		return state.ToolResult{
+		return types.ToolResult{
 			ToolName: w.Name(),
 			IsError:  true,
 			ErrMsg:   fmt.Sprintf("'%s' 에 대한 날씨 데이터가 없습니다", city),
@@ -80,7 +80,7 @@ func (w *WeatherMock) Execute(_ context.Context, input map[string]any) (state.To
 	output := fmt.Sprintf("도시: %s | 날씨: %s | 기온: %d°C | 습도: %d%%",
 		city, data.Condition, data.TempCelsius, data.Humidity)
 
-	return state.ToolResult{
+	return types.ToolResult{
 		ToolName: w.Name(),
 		Output:   output,
 	}, nil

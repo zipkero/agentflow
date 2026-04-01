@@ -3,7 +3,7 @@ package tools
 import (
 	"context"
 
-	"agentflow/internal/state"
+	"agentflow/internal/types"
 )
 
 // Tool 은 Agent가 실행할 수 있는 단일 기능 단위의 인터페이스다.
@@ -23,5 +23,5 @@ type Tool interface {
 
 	// Execute 는 input map 을 받아 tool 로직을 실행하고 결과를 반환한다.
 	// input 의 키와 값 타입은 InputSchema 를 따라야 한다.
-	Execute(ctx context.Context, input map[string]any) (state.ToolResult, error)
+	Execute(ctx context.Context, input map[string]any) (types.ToolResult, error)
 }

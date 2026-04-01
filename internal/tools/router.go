@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"agentflow/internal/agent"
-	"agentflow/internal/planner"
-	"agentflow/internal/state"
+	"agentflow/internal/types"
 )
 
 // ToolRouter 는 PlanResult 를 받아 registry 에서 tool 을 조회하고 실행한다.
@@ -27,7 +26,7 @@ func NewToolRouter(registry ToolRegistry) *ToolRouter {
 //   - tool_not_found  : registry 에 없는 이름 → fatal
 //   - input_validation_failed : required 필드 누락 또는 타입 불일치 → fatal
 //   - tool_execution_failed   : Execute() 에서 error 반환 → retryable
-func (r *ToolRouter) Route(ctx context.Context, plan planner.PlanResult) (state.ToolResult, error) {
+func (r *ToolRouter) Route(ctx context.Context, plan types.PlanResult) (types.ToolResult, error) {
 	start := time.Now()
 	requestID := requestIDFromCtx(ctx)
 	sessionID := sessionIDFromCtx(ctx)
@@ -43,7 +42,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan planner.PlanResult) (state.
 			"error", routeErr.Msg,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
-		return state.ToolResult{}, routeErr
+		return types.ToolResult{}, routeErr
 	}
 
 	if err := validateInput(tool.InputSchema(), plan.ToolInput); err != nil {
@@ -56,7 +55,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan planner.PlanResult) (state.
 			"error", routeErr.Msg,
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
-		return state.ToolResult{}, routeErr
+		return types.ToolResult{}, routeErr
 	}
 
 	result, err := tool.Execute(ctx, plan.ToolInput)
@@ -72,7 +71,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan planner.PlanResult) (state.
 			"error", routeErr.Msg,
 			"duration_ms", duration,
 		)
-		return state.ToolResult{}, routeErr
+		return types.ToolResult{}, routeErr
 	}
 
 	slog.InfoContext(ctx, "tool route succeeded",
@@ -88,7 +87,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan planner.PlanResult) (state.
 }
 
 // outputSummary 는 ToolResult 출력을 100자 이내로 요약한다.
-func outputSummary(r state.ToolResult) string {
+func outputSummary(r types.ToolResult) string {
 	if r.IsError {
 		return r.ErrMsg
 	}

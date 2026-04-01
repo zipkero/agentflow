@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"agentflow/internal/agent"
-	"agentflow/internal/planner"
 	"agentflow/internal/tools"
 	"agentflow/internal/tools/calculator"
+	"agentflow/internal/types"
 )
 
 func newRouterWithCalc() *tools.ToolRouter {
@@ -19,8 +19,8 @@ func newRouterWithCalc() *tools.ToolRouter {
 func TestToolRouter_ValidTool(t *testing.T) {
 	router := newRouterWithCalc()
 
-	result, err := router.Route(context.Background(), planner.PlanResult{
-		ActionType: planner.ActionToolCall,
+	result, err := router.Route(context.Background(), types.PlanResult{
+		ActionType: types.ActionToolCall,
 		ToolName:   "calculator",
 		ToolInput:  map[string]any{"expression": "2 + 3"},
 	})
@@ -39,8 +39,8 @@ func TestToolRouter_ValidTool(t *testing.T) {
 func TestToolRouter_ToolNotFound(t *testing.T) {
 	router := newRouterWithCalc()
 
-	_, err := router.Route(context.Background(), planner.PlanResult{
-		ActionType: planner.ActionToolCall,
+	_, err := router.Route(context.Background(), types.PlanResult{
+		ActionType: types.ActionToolCall,
 		ToolName:   "nonexistent",
 		ToolInput:  map[string]any{},
 	})
@@ -57,8 +57,8 @@ func TestToolRouter_ToolNotFound(t *testing.T) {
 func TestToolRouter_InputValidationFailed_MissingRequired(t *testing.T) {
 	router := newRouterWithCalc()
 
-	_, err := router.Route(context.Background(), planner.PlanResult{
-		ActionType: planner.ActionToolCall,
+	_, err := router.Route(context.Background(), types.PlanResult{
+		ActionType: types.ActionToolCall,
 		ToolName:   "calculator",
 		ToolInput:  map[string]any{}, // expression 누락
 	})
@@ -75,8 +75,8 @@ func TestToolRouter_InputValidationFailed_MissingRequired(t *testing.T) {
 func TestToolRouter_InputValidationFailed_TypeMismatch(t *testing.T) {
 	router := newRouterWithCalc()
 
-	_, err := router.Route(context.Background(), planner.PlanResult{
-		ActionType: planner.ActionToolCall,
+	_, err := router.Route(context.Background(), types.PlanResult{
+		ActionType: types.ActionToolCall,
 		ToolName:   "calculator",
 		ToolInput:  map[string]any{"expression": 12345}, // string 이어야 하는데 int
 	})
