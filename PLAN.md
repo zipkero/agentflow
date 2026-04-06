@@ -327,7 +327,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 3-2. PlanResult 스키마 고정
 
-- [ ] **Task 3-2-1. PlanResult struct 확장**
+- [x] **Task 3-2-1. PlanResult struct 확장**
   - **무엇**: `ReasoningSummary`, `Confidence`, `NextGoal` 필드 추가, JSON 태그 정의
   - **왜**: LLM이 structured output으로 반환할 때 파싱 기준이 되는 타입. 이 시점에 고정하지 않으면 LLM planner 구현 중 계속 바뀜
   - **산출물**: `internal/types/plan_result.go` 수정 (Phase 2 Task 2-7-1에서 이동됨. `internal/planner/plan_result.go` 아님)
