@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"agentflow/internal/agent"
 	"agentflow/internal/tools"
 	"agentflow/internal/tools/calculator"
 	"agentflow/internal/types"
@@ -46,8 +45,8 @@ func TestToolRouter_ToolNotFound(t *testing.T) {
 	})
 
 	agentErr := assertAgentError(t, err)
-	if agentErr.Kind != agent.ErrToolNotFound {
-		t.Errorf("에러 유형 불일치: got %q, want %q", agentErr.Kind, agent.ErrToolNotFound)
+	if agentErr.Kind != types.ErrToolNotFound {
+		t.Errorf("에러 유형 불일치: got %q, want %q", agentErr.Kind, types.ErrToolNotFound)
 	}
 	if agentErr.Retryable {
 		t.Error("tool_not_found 는 fatal 이어야 한다")
@@ -64,8 +63,8 @@ func TestToolRouter_InputValidationFailed_MissingRequired(t *testing.T) {
 	})
 
 	agentErr := assertAgentError(t, err)
-	if agentErr.Kind != agent.ErrInputValidationFailed {
-		t.Errorf("에러 유형 불일치: got %q, want %q", agentErr.Kind, agent.ErrInputValidationFailed)
+	if agentErr.Kind != types.ErrInputValidationFailed {
+		t.Errorf("에러 유형 불일치: got %q, want %q", agentErr.Kind, types.ErrInputValidationFailed)
 	}
 	if agentErr.Retryable {
 		t.Error("input_validation_failed 는 fatal 이어야 한다")
@@ -82,23 +81,23 @@ func TestToolRouter_InputValidationFailed_TypeMismatch(t *testing.T) {
 	})
 
 	agentErr := assertAgentError(t, err)
-	if agentErr.Kind != agent.ErrInputValidationFailed {
-		t.Errorf("에러 유형 불일치: got %q, want %q", agentErr.Kind, agent.ErrInputValidationFailed)
+	if agentErr.Kind != types.ErrInputValidationFailed {
+		t.Errorf("에러 유형 불일치: got %q, want %q", agentErr.Kind, types.ErrInputValidationFailed)
 	}
 	if agentErr.Retryable {
 		t.Error("input_validation_failed 는 fatal 이어야 한다")
 	}
 }
 
-// assertAgentError 는 err 가 *agent.AgentError 타입인지 확인하고 반환한다.
-func assertAgentError(t *testing.T, err error) *agent.AgentError {
+// assertAgentError 는 err 가 *types.AgentError 타입인지 확인하고 반환한다.
+func assertAgentError(t *testing.T, err error) *types.AgentError {
 	t.Helper()
 	if err == nil {
 		t.Fatal("error 가 반환되어야 한다")
 	}
-	agentErr, ok := err.(*agent.AgentError)
+	agentErr, ok := err.(*types.AgentError)
 	if !ok {
-		t.Fatalf("*agent.AgentError 타입이어야 한다, got %T", err)
+		t.Fatalf("*types.AgentError 타입이어야 한다, got %T", err)
 	}
 	return agentErr
 }

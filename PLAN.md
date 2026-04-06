@@ -353,7 +353,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **비고**: LLM API 호출 시 `context.WithTimeout`으로 per-call deadline 설정 필수. timeout 없이는 LLM 응답 지연 시 goroutine이 무기한 대기함. Phase 8(Task 8-1-2)의 전체 request deadline과 별개로, 개별 LLM 호출 단위 timeout을 이 시점에 적용
   - **산출물**: `internal/llm/openai_client.go`
 
-- [ ] **Task 3-4-2. system prompt 빌더 구현**
+- [x] **Task 3-4-2. system prompt 빌더 구현**
   - **무엇**: AgentState와 tool spec 목록을 받아 system prompt 문자열을 생성하는 함수
   - **왜**: prompt 생성 로직이 planner 본체에 인라인으로 있으면 테스트와 수정이 어려움
   - **산출물**: `internal/planner/prompt_builder.go`

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	"agentflow/internal/agent"
 	"agentflow/internal/types"
 )
 
@@ -33,7 +32,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan types.PlanResult) (types.To
 
 	tool, err := r.registry.Get(plan.ToolName)
 	if err != nil {
-		routeErr := agent.NewToolNotFoundError(plan.ToolName)
+		routeErr := types.NewToolNotFoundError(plan.ToolName)
 		slog.ErrorContext(ctx, "tool route failed",
 			"request_id", requestID,
 			"session_id", sessionID,
@@ -46,7 +45,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan types.PlanResult) (types.To
 	}
 
 	if err := validateInput(tool.InputSchema(), plan.ToolInput); err != nil {
-		routeErr := agent.NewInputValidationError(err.Error())
+		routeErr := types.NewInputValidationError(err.Error())
 		slog.ErrorContext(ctx, "tool route failed",
 			"request_id", requestID,
 			"session_id", sessionID,
@@ -61,7 +60,7 @@ func (r *ToolRouter) Route(ctx context.Context, plan types.PlanResult) (types.To
 	result, err := tool.Execute(ctx, plan.ToolInput)
 	duration := time.Since(start).Milliseconds()
 	if err != nil {
-		routeErr := agent.NewToolExecutionError(plan.ToolName, err)
+		routeErr := types.NewToolExecutionError(plan.ToolName, err)
 		slog.ErrorContext(ctx, "tool route failed",
 			"request_id", requestID,
 			"session_id", sessionID,
