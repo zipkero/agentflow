@@ -41,7 +41,9 @@ func (r *Runtime) Run(ctx context.Context, s state.AgentState) (state.AgentState
 		//    IsFinished 가 plan 반영 전 state 를 기준으로 판단하므로
 		//    FinalAnswer 를 여기서 채운 뒤 검사해야 즉시 종료된다.
 		//    summarize 는 Executor 를 호출하지 않고 Reasoning 을 그대로 FinalAnswer 로 사용한다.
-		if plan.ActionType == types.ActionRespondDirectly || plan.ActionType == types.ActionSummarize {
+		if plan.ActionType == types.ActionRespondDirectly ||
+			plan.ActionType == types.ActionSummarize ||
+			plan.ActionType == types.ActionAskUser {
 			s.FinalAnswer = plan.Reasoning
 		}
 

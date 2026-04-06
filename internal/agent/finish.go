@@ -20,6 +20,9 @@ const (
 	FinishByMaxStep FinishReason = "max_step"
 	// FinishBySummarize 는 Planner가 ActionSummarize 를 반환해 loop가 종료된 경우다.
 	FinishBySummarize FinishReason = "summarize"
+	// FinishByAskUser 는 Planner가 ActionAskUser 를 반환해 loop가 종료된 경우다.
+	// CLI 환경에서는 FinalAnswer 에 질문 문자열이 채워진 채로 종료된다.
+	FinishByAskUser FinishReason = "ask_user"
 	// FinishByFatalError 는 복구 불가능한 에러로 loop가 종료된 경우다.
 	FinishByFatalError FinishReason = "fatal_error"
 )
@@ -53,6 +56,13 @@ func IsFinished(plan types.PlanResult, s state.AgentState, maxStep int) FinishRe
 	// 2a. summarize 이고 FinalAnswer 가 이미 채워진 경우
 	if plan.ActionType == types.ActionSummarize && s.FinalAnswer != "" {
 		return FinishResult{Finished: true, Reason: FinishBySummarize}
+	}
+
+	// 2b. ask_user 이고 FinalAnswer 가 이미 채워진 경우
+	// CLI 환경에서는 질문 문자열을 FinalAnswer 에 채우고 즉시 종료한다.
+	// HTTP API 비동기 대기는 Phase 7 에서 별도 구현한다.
+	if plan.ActionType == types.ActionAskUser && s.FinalAnswer != "" {
+		return FinishResult{Finished: true, Reason: FinishByAskUser}
 	}
 
 	// 3. StepCount 가 maxStep 에 도달한 경우

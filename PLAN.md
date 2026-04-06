@@ -319,7 +319,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: ActionType을 추가하면 Runtime loop에서 반드시 처리 분기가 있어야 함. 누락 시 `summarize`를 받은 루프가 정의되지 않은 동작을 함
   - **산출물**: `internal/agent/runtime.go` 수정
 
-- [ ] **Task 3-1-3. Runtime loop에 `ask_user` ActionType 처리 분기 추가**
+- [x] **Task 3-1-3. Runtime loop에 `ask_user` ActionType 처리 분기 추가**
   - **무엇**: `Runtime.Run()` loop에서 ActionType이 `ask_user`일 때, `FinalAnswer`에 LLM이 생성한 질문 문자열을 채우고 `respond_directly`와 동일하게 loop를 즉시 종료하는 분기 추가
   - **왜**: Task 3-1-1 비고에 "CLI 환경에서 ask_user → respond_directly로 대체 처리(loop 종료)"를 정책으로 명시했지만 구현 Task가 없었음. 이 분기가 없으면 LLMPlanner가 `ask_user`를 선택했을 때 loop가 undefined behavior를 보임
   - **비고**: HTTP API 환경에서의 비동기 대기 메커니즘은 Phase 7 Task 7-5-1에서 구현. 이 Task는 CLI 경로만 대상으로 함
