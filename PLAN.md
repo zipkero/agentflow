@@ -332,7 +332,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: LLM이 structured output으로 반환할 때 파싱 기준이 되는 타입. 이 시점에 고정하지 않으면 LLM planner 구현 중 계속 바뀜
   - **산출물**: `internal/types/plan_result.go` 수정 (Phase 2 Task 2-7-1에서 이동됨. `internal/planner/plan_result.go` 아님)
 
-- [ ] **Task 3-2-2. PlanResult JSON schema 문자열 작성**
+- [x] **Task 3-2-2. PlanResult JSON schema 문자열 작성**
   - **무엇**: system prompt에 삽입할 JSON schema 문자열 상수 또는 생성 함수
   - **왜**: LLM에게 schema를 명시하지 않으면 hallucinated JSON 비율이 높아짐
   - **산출물**: `internal/planner/schema.go`
