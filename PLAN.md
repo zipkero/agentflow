@@ -455,7 +455,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: `AgentState`에 섞여 있던 요청 범위 데이터를 명시적으로 분리. 이 경계가 없으면 session 데이터와 혼용됨
   - **산출물**: `internal/state/request_state.go`
 
-- [ ] **Task 4-1-2. AgentState aggregator 구조 결정 및 적용**
+- [x] **Task 4-1-2. AgentState aggregator 구조 결정 및 적용**
   - **무엇**: `AgentState`를 `RequestState + SessionState`를 포함하는 aggregator struct로 재정의. `Runtime.Run()` 시그니처(`Run(ctx, AgentState)`)는 유지하되 내부 필드 구조만 변경
   - **왜**: Phase 1에서 확정한 loop 시그니처를 변경하지 않으면서 상태 분리를 달성하는 방법. 시그니처 변경 시 Planner/Executor 인터페이스 전체 연쇄 변경이 발생하므로 aggregator 패턴으로 파급을 최소화
   - **산출물**: `internal/state/agent_state.go` 수정 (RequestState, SessionState 포함 구조로 변경)
