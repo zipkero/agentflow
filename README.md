@@ -124,3 +124,40 @@ Phase 9  문서화 / 포트폴리오
 > LLM planner가 먼저 동작해야 session 연결 후 대화 맥락이 제대로 흘러가는지 확인할 수 있다.
 
 상세 Task 목록은 [PLAN.md](./PLAN.md)를 참고한다.
+
+---
+
+## 로컬 실행 방법
+
+### 전제 조건
+
+- Go 1.21 이상
+- Docker / Docker Compose (통합 테스트 실행 시 필요)
+- `.env` 파일 설정 (`.env.example` 참고)
+
+### 빌드 및 테스트
+
+```bash
+# 빌드 검증
+make build
+
+# 단위 테스트 (integration 제외, CI 실행 타겟)
+make test-unit
+
+# 통합 테스트 (Redis, Postgres 컨테이너 필요)
+docker-compose up -d
+make test-integration
+```
+
+### 인프라 기동
+
+```bash
+# Redis + Postgres 컨테이너 기동
+docker-compose up -d
+
+# 컨테이너 종료
+docker-compose down
+```
+
+> `//go:build integration` 태그가 붙은 테스트 파일은 `make test-unit`에서 제외된다.
+> 통합 테스트는 Redis/Postgres 실제 연결이 필요하므로 반드시 `docker-compose up` 이후 실행한다.

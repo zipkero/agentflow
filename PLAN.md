@@ -436,7 +436,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 4-0. 통합 테스트 인프라 준비
 
-- [ ] **Task 4-0-1. 통합 테스트 타겟 추가**
+- [x] **Task 4-0-1. 통합 테스트 타겟 추가**
   - **무엇**: Phase 0 Task 0-2-4에서 만든 `Makefile`에 `make test-unit`(`go test ./...`, integration 태그 제외)과 `make test-integration`(`go test -tags integration ./...`, `docker-compose up` 전제) 타겟 추가. `README.md`에 로컬 실행 전제 조건 명시
   - **왜**: Phase 4부터 Redis/Postgres 실제 연결이 필요한 통합 테스트가 등장함. `//go:build integration` 태그 규칙 자체는 Phase 3 Task 3-0-2에서 이미 수립됨. 이 Task는 인프라 의존 테스트용 `make test-integration` 타겟 추가에 집중
   - **비고**: Phase 4, 5, 7의 통합 테스트 파일 작성 시마다 파일 상단에 `//go:build integration` 태그 적용. GitHub Actions CI(Phase 9 Task 9-0-1)는 `make test-unit`만 실행
