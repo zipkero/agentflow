@@ -450,7 +450,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 4-1. Request State
 
-- [ ] **Task 4-1-1. RequestState struct 정의**
+- [x] **Task 4-1-1. RequestState struct 정의**
   - **무엇**: RequestID, UserInput, ToolResults, ReasoningSteps, StartedAt 필드를 갖는 struct
   - **왜**: `AgentState`에 섞여 있던 요청 범위 데이터를 명시적으로 분리. 이 경계가 없으면 session 데이터와 혼용됨
   - **산출물**: `internal/state/request_state.go`
