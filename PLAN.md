@@ -472,7 +472,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: 연속 대화의 맥락을 담는 단위. Request State와 분리되어야 session ID만으로 이전 대화를 복원할 수 있음
   - **산출물**: `internal/state/session_state.go`
 
-- [ ] **Task 4-2-2. SessionRepository 인터페이스 정의**
+- [x] **Task 4-2-2. SessionRepository 인터페이스 정의**
   - **무엇**: `Load(ctx, sessionID) (SessionState, error)`, `Save(ctx, sessionID, SessionState) error` 인터페이스
   - **왜**: in-memory와 Redis 구현을 교체할 수 있도록 저장소를 인터페이스로 분리
   - **산출물**: `internal/state/session_repository.go`
