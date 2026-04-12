@@ -523,7 +523,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: 장기 기억이 영구 저장소에 없으면 프로세스 재시작마다 소실됨. embedding 검색은 Phase 9 이후 선택 도입
   - **산출물**: `internal/memory/postgres_memory_repository.go`
 
-- [ ] **Task 4-4-4. MemoryRepository integration test 작성**
+- [x] **Task 4-4-4. MemoryRepository integration test 작성**
   - **무엇**: `Save` 후 `LoadByTags` OR 조건 검증 (태그 중 하나만 일치해도 반환), 빈 태그 배열 조회, `limit` 초과 시 잘리는지 확인. Postgres 실제 연결 기반 테스트
   - **왜**: OR 조건 쿼리(`WHERE tags && $1`)가 의도대로 동작하는지는 단위 테스트로 검증 불가. Phase 4 Exit Criteria의 "태그 OR 조건 조회 결과 확인"을 코드 수준에서 보장하려면 통합 테스트가 필요
   - **산출물**: `internal/memory/memory_repository_test.go`
