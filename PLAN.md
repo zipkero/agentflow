@@ -530,7 +530,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 4-5. Memory Manager
 
-- [ ] **Task 4-5-1. MemoryManager 인터페이스 정의**
+- [x] **Task 4-5-1. MemoryManager 인터페이스 정의**
   - **무엇**: `LoadSession`, `SaveSession`, `SaveMemory`, `LoadRelevantMemory` 메서드를 갖는 파사드 인터페이스
   - **왜**: runtime이 session repository와 memory repository를 각각 직접 알면 의존이 넓어짐. 단일 인터페이스로 캡슐화
   - **산출물**: `internal/memory/memory_manager.go`
