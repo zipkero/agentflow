@@ -3,6 +3,7 @@ package planner_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 
 	"github.com/zipkero/agent-runtime/internal/planner"
@@ -53,7 +54,7 @@ func TestLLMPlanner_ValidRespondDirectly(t *testing.T) {
 		Reasoning:  "직접 응답",
 	}
 	mock := testutil.NewMockLLMClient().WithResponse(mustMarshal(t, expected))
-	p := planner.NewLLMPlanner(mock, newRegistry())
+	p := planner.NewLLMPlanner(mock, newRegistry(), slog.Default())
 
 	result, err := p.Plan(context.Background(), baseState())
 	if err != nil {
@@ -75,7 +76,7 @@ func TestLLMPlanner_ValidToolCall(t *testing.T) {
 		Reasoning:  "검색 필요",
 	}
 	mock := testutil.NewMockLLMClient().WithResponse(mustMarshal(t, expected))
-	p := planner.NewLLMPlanner(mock, newRegistry("search"))
+	p := planner.NewLLMPlanner(mock, newRegistry("search"), slog.Default())
 
 	result, err := p.Plan(context.Background(), baseState())
 	if err != nil {
@@ -102,7 +103,7 @@ func TestLLMPlanner_InvalidJSON_RetrySucceeds(t *testing.T) {
 	mock := testutil.NewMockLLMClient().
 		WithResponse("not valid json {{{").
 		WithResponse(mustMarshal(t, valid))
-	p := planner.NewLLMPlanner(mock, newRegistry())
+	p := planner.NewLLMPlanner(mock, newRegistry(), slog.Default())
 
 	result, err := p.Plan(context.Background(), baseState())
 	if err != nil {
@@ -120,7 +121,7 @@ func TestLLMPlanner_InvalidJSON_RetryAlsoFails(t *testing.T) {
 	mock := testutil.NewMockLLMClient().
 		WithResponse("not valid json {{{").
 		WithResponse("still not valid ~~~")
-	p := planner.NewLLMPlanner(mock, newRegistry())
+	p := planner.NewLLMPlanner(mock, newRegistry(), slog.Default())
 
 	_, err := p.Plan(context.Background(), baseState())
 	if err == nil {
@@ -147,7 +148,7 @@ func TestLLMPlanner_HallucinatedTool_RetrySucceeds(t *testing.T) {
 	mock := testutil.NewMockLLMClient().
 		WithResponse(mustMarshal(t, hallucinated)).
 		WithResponse(mustMarshal(t, valid))
-	p := planner.NewLLMPlanner(mock, newRegistry("search"))
+	p := planner.NewLLMPlanner(mock, newRegistry("search"), slog.Default())
 
 	result, err := p.Plan(context.Background(), baseState())
 	if err != nil {
@@ -170,7 +171,7 @@ func TestLLMPlanner_HallucinatedTool_RetryAlsoFails(t *testing.T) {
 	mock := testutil.NewMockLLMClient().
 		WithResponse(mustMarshal(t, hallucinated)).
 		WithResponse(mustMarshal(t, hallucinated))
-	p := planner.NewLLMPlanner(mock, newRegistry("search"))
+	p := planner.NewLLMPlanner(mock, newRegistry("search"), slog.Default())
 
 	_, err := p.Plan(context.Background(), baseState())
 	if err == nil {

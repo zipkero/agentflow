@@ -17,8 +17,8 @@ type ToolRouter struct {
 	logger   *slog.Logger
 }
 
-func NewToolRouter(registry ToolRegistry) *ToolRouter {
-	return &ToolRouter{registry: registry, logger: observability.New()}
+func NewToolRouter(registry ToolRegistry, logger *slog.Logger) *ToolRouter {
+	return &ToolRouter{registry: registry, logger: logger}
 }
 
 // Route 는 PlanResult 의 ToolName 으로 tool 을 조회하고 ToolInput 을 검증한 뒤 실행한다.

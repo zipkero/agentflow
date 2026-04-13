@@ -23,13 +23,13 @@ type Runtime struct {
 }
 
 // NewRuntime 은 Runtime 을 생성한다.
-func NewRuntime(p planner.Planner, e executor.Executor, mm memory.MemoryManager, maxStep int) *Runtime {
+func NewRuntime(p planner.Planner, e executor.Executor, mm memory.MemoryManager, maxStep int, logger *slog.Logger) *Runtime {
 	return &Runtime{
 		Planner:       p,
 		Executor:      e,
 		MemoryManager: mm,
 		MaxStep:       maxStep,
-		logger:        observability.New(),
+		logger:        logger,
 	}
 }
 
@@ -37,11 +37,7 @@ func NewRuntime(p planner.Planner, e executor.Executor, mm memory.MemoryManager,
 // 최종 AgentState 와 에러를 반환한다.
 // ctx 취소 시 루프를 즉시 중단하고 현재 state 를 반환한다.
 func (r *Runtime) Run(ctx context.Context, s state.AgentState) (state.AgentState, error) {
-	base := r.logger
-	if base == nil {
-		base = observability.New()
-	}
-	log := observability.FromContext(ctx, base)
+	log := observability.FromContext(ctx, r.logger)
 
 	// Long-term Memory 조회: Run() 시작 시 1회 호출하여 AgentState 에 주입
 	if r.MemoryManager != nil && s.Request.UserInput != "" {

@@ -56,15 +56,22 @@ func WithHTTPClient(hc *http.Client) OpenAIOption {
 	}
 }
 
+// WithLogger 는 커스텀 logger를 주입한다.
+func WithLogger(l *slog.Logger) OpenAIOption {
+	return func(c *OpenAIClient) {
+		c.logger = l
+	}
+}
+
 // NewOpenAIClient 는 OpenAIClient를 생성한다.
 // apiKey: OpenAI API 키 (필수)
-func NewOpenAIClient(apiKey string, opts ...OpenAIOption) *OpenAIClient {
+func NewOpenAIClient(apiKey string, logger *slog.Logger, opts ...OpenAIOption) *OpenAIClient {
 	c := &OpenAIClient{
 		apiKey:     apiKey,
 		model:      defaultModel,
 		httpClient: &http.Client{},
 		timeout:    defaultTimeout,
-		logger:     observability.New(),
+		logger:     logger,
 	}
 	for _, opt := range opts {
 		opt(c)

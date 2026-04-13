@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 
 	"github.com/zipkero/agent-runtime/internal/executor"
@@ -46,10 +47,10 @@ func TestRun_EndToEnd_RealToolExecution(t *testing.T) {
 	reg := tools.NewInMemoryToolRegistry()
 	reg.Register(calculator.New())
 
-	p := planner.NewLLMPlanner(mockLLM, reg)
-	router := tools.NewToolRouter(reg)
+	p := planner.NewLLMPlanner(mockLLM, reg, slog.Default())
+	router := tools.NewToolRouter(reg, slog.Default())
 	e := executor.NewToolExecutor(router)
-	rt := NewRuntime(p, e, nil, 10)
+	rt := NewRuntime(p, e, nil, 10, slog.Default())
 
 	s := state.AgentState{
 		Request: state.RequestState{

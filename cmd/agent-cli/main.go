@@ -13,6 +13,7 @@ import (
 	"github.com/zipkero/agent-runtime/internal/executor"
 	"github.com/zipkero/agent-runtime/internal/llm"
 	"github.com/zipkero/agent-runtime/internal/memory"
+	"github.com/zipkero/agent-runtime/internal/observability"
 	"github.com/zipkero/agent-runtime/internal/planner"
 	"github.com/zipkero/agent-runtime/internal/state"
 	"github.com/zipkero/agent-runtime/internal/tools"
@@ -29,6 +30,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Logger (전체 프로세스에서 단일 인스턴스)
+	logger := observability.New()
+
 	// Registry + tools 등록
 	registry := tools.NewInMemoryToolRegistry()
 	registry.Register(calculator.New())
@@ -36,12 +40,12 @@ func main() {
 	registry.Register(weather_mock.New())
 
 	// ToolRouter + ToolExecutor
-	router := tools.NewToolRouter(registry)
+	router := tools.NewToolRouter(registry, logger)
 	exec := executor.NewToolExecutor(router)
 
 	// LLMPlanner
-	client := llm.NewOpenAIClient(cfg.OpenAIAPIKey)
-	p := planner.NewLLMPlanner(client, registry)
+	client := llm.NewOpenAIClient(cfg.OpenAIAPIKey, logger)
+	p := planner.NewLLMPlanner(client, registry, logger)
 
 	// MemoryManager
 	sessionRepo := state.NewInMemorySessionRepository()
@@ -49,7 +53,7 @@ func main() {
 	mm := memory.NewDefaultMemoryManager(sessionRepo, memoryRepo)
 
 	// Runtime
-	rt := agent.NewRuntime(p, exec, mm, 10)
+	rt := agent.NewRuntime(p, exec, mm, 10, logger)
 
 	fmt.Print("입력: ")
 	scanner := bufio.NewScanner(os.Stdin)

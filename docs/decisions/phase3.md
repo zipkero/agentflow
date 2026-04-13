@@ -75,7 +75,7 @@ parseAndValidate → tool_name not in registry → error("hallucinated tool name
 **왜:**
 - `log/slog`는 Go 1.21 표준 패키지로 외부 의존이 없다.
 - `observability.FromContext(ctx, base)`로 context에서 추적 ID를 자동으로 꺼내 logger에 주입하므로, 각 호출 지점에서 ID를 수동으로 전달하지 않아도 된다.
-- `log/slog` 직접 사용을 `observability` 패키지로만 허용하는 규칙은 logger 생성 방식이 나중에 바뀌더라도 (OTel 연동 등) 변경 지점이 하나임을 보장한다.
+- logger 생성(`slog.New` 등)은 `observability.New()`에서만 수행하고, 최상위 조립 지점(`main.go`)에서 1회 생성해 각 컴포넌트 생성자에 `*slog.Logger`로 주입한다. 이를 통해 logger 생성 방식이 바뀌더라도 (OTel 연동 등) 변경 지점이 하나임을 보장한다. `*slog.Logger` 타입 참조와 메서드 호출(`.InfoContext` 등)은 모든 패키지에서 허용한다.
 
 **Phase 8 계획:**
 - 8-3-1: OTel SDK 초기화.

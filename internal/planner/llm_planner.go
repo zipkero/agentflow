@@ -23,11 +23,11 @@ type LLMPlanner struct {
 }
 
 // NewLLMPlanner 는 LLMPlanner 를 생성한다.
-func NewLLMPlanner(client llm.LLMClient, registry tools.ToolRegistry) *LLMPlanner {
+func NewLLMPlanner(client llm.LLMClient, registry tools.ToolRegistry, logger *slog.Logger) *LLMPlanner {
 	return &LLMPlanner{
 		client:   client,
 		registry: registry,
-		logger:   observability.New(),
+		logger:   logger,
 	}
 }
 

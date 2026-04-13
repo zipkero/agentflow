@@ -17,13 +17,16 @@ agent-runtime의 전체 실행 흐름과 컴포넌트 간 관계를 기술한다
 │  cmd/agent-cli/main.go                                           │
 │                                                                  │
 │  config.Load()  // .env → Config{OpenAIAPIKey, RedisURL, ...}   │
+│  logger = observability.New()  // 단일 logger 인스턴스           │
 │                                                                  │
 │  MemoryManager = DefaultMemoryManager(                           │
 │    InMemorySessionRepository,                                    │
 │    InMemoryMemoryRepository,                                     │
 │  )                                                               │
 │                                                                  │
-│  Runtime = NewRuntime(LLMPlanner, ToolExecutor, MemoryManager)   │
+│  // 모든 컴포넌트에 logger 주입                                  │
+│  Runtime = NewRuntime(LLMPlanner, ToolExecutor, MemoryManager,   │
+│                       maxStep, logger)                            │
 │                                                                  │
 │  AgentState{                                                     │
 │    Request: RequestState{                                        │

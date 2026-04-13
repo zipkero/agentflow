@@ -2,6 +2,7 @@ package tools_test
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	"github.com/zipkero/agent-runtime/internal/tools"
@@ -12,7 +13,7 @@ import (
 func newRouterWithCalc() *tools.ToolRouter {
 	r := tools.NewInMemoryToolRegistry()
 	r.Register(calculator.New())
-	return tools.NewToolRouter(r)
+	return tools.NewToolRouter(r, slog.Default())
 }
 
 func TestToolRouter_ValidTool(t *testing.T) {

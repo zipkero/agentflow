@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/zipkero/agent-runtime/internal/executor"
@@ -12,7 +13,7 @@ import (
 )
 
 func newRuntime(p planner.Planner, e executor.Executor, maxStep int) *Runtime {
-	return &Runtime{Planner: p, Executor: e, MaxStep: maxStep}
+	return &Runtime{Planner: p, Executor: e, MaxStep: maxStep, logger: slog.Default()}
 }
 
 func initialState() state.AgentState {
