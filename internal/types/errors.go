@@ -14,6 +14,8 @@ const (
 	ErrToolExecutionFailed ErrorKind = "tool_execution_failed"
 	// ErrLLMParseFailed 는 LLM 응답을 파싱할 수 없는 경우다. retryable.
 	ErrLLMParseFailed ErrorKind = "llm_parse_error"
+	// ErrToolTimeout 는 tool 실행이 deadline 을 초과한 경우다. retryable.
+	ErrToolTimeout ErrorKind = "tool_timeout"
 )
 
 // AgentError 는 agent loop 내에서 발생하는 구조화된 에러 타입이다.
@@ -54,4 +56,9 @@ func NewToolExecutionError(toolName string, cause error) *AgentError {
 // NewLLMParseError 는 llm_parse_error retryable 에러를 생성한다.
 func NewLLMParseError(cause error) *AgentError {
 	return newRetryableError(ErrLLMParseFailed, fmt.Sprintf("failed to parse LLM response: %v", cause))
+}
+
+// NewToolTimeoutError 는 tool_timeout retryable 에러를 생성한다.
+func NewToolTimeoutError(toolName string) *AgentError {
+	return newRetryableError(ErrToolTimeout, fmt.Sprintf("tool %q execution timed out", toolName))
 }

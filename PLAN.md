@@ -576,7 +576,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ### Step 5-1. Concurrency 기초
 
-- [ ] **Task 5-1-1. context.WithTimeout을 이용한 tool 실행 단위 timeout 적용**
+- [x] **Task 5-1-1. context.WithTimeout을 이용한 tool 실행 단위 timeout 적용**
   - **무엇**: ToolRouter.Route() 호출 시 per-tool timeout을 context에 적용하는 구현. context 취소 시 goroutine이 정리되는 패턴 포함
   - **왜**: Phase 3에서 LLM 호출이 시작된 이후 deadline 없이 운용되고 있음. tool 실행 단위부터 timeout을 적용해야 Phase 7 병렬 실행에서 goroutine leak이 발생하지 않으며, 이 패턴을 Phase 9 전체 request deadline(Task 8-1-2)의 기반으로 사용
   - **비고**: Phase 8의 Task 8-1-1(per-tool timeout)과 역할이 겹치지 않도록 이 Task는 "context 전달 패턴 확립"에 집중하고, Phase 8에서 설정값 외부화를 담당

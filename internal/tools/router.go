@@ -10,6 +10,10 @@ import (
 	"github.com/zipkero/agent-runtime/internal/types"
 )
 
+// defaultToolTimeout 는 개별 tool 실행의 기본 deadline 이다.
+// Phase 8(Task 8-1-1)에서 config 로 외부화한다.
+const defaultToolTimeout = 30 * time.Second
+
 // ToolRouter 는 PlanResult 를 받아 registry 에서 tool 을 조회하고 실행한다.
 // planner 와 tool 구현체 사이를 중재하며, 에러를 유형별로 분류해 반환한다.
 type ToolRouter struct {
@@ -54,10 +58,18 @@ func (r *ToolRouter) Route(ctx context.Context, plan types.PlanResult) (types.To
 		return types.ToolResult{}, routeErr
 	}
 
-	result, err := tool.Execute(ctx, plan.ToolInput)
+	toolCtx, cancel := context.WithTimeout(ctx, defaultToolTimeout)
+	defer cancel()
+
+	result, err := tool.Execute(toolCtx, plan.ToolInput)
 	duration := time.Since(start).Milliseconds()
 	if err != nil {
-		routeErr := types.NewToolExecutionError(plan.ToolName, err)
+		var routeErr *types.AgentError
+		if toolCtx.Err() == context.DeadlineExceeded {
+			routeErr = types.NewToolTimeoutError(plan.ToolName)
+		} else {
+			routeErr = types.NewToolExecutionError(plan.ToolName, err)
+		}
 		log.ErrorContext(ctx, "tool route failed",
 			"tool_name", plan.ToolName,
 			"input", plan.ToolInput,
