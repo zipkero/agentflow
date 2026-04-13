@@ -535,7 +535,7 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **왜**: runtime이 session repository와 memory repository를 각각 직접 알면 의존이 넓어짐. 단일 인터페이스로 캡슐화
   - **산출물**: `internal/memory/memory_manager.go`
 
-- [ ] **Task 4-5-2. DefaultMemoryManager 구현**
+- [x] **Task 4-5-2. DefaultMemoryManager 구현**
   - **무엇**: SessionRepository + MemoryRepository를 주입받아 MemoryManager 인터페이스를 구현하는 구조체
   - **왜**: runtime은 MemoryManager만 알면 되고 구체 저장소는 주입으로 교체 가능
   - **산출물**: `internal/memory/default_memory_manager.go`
