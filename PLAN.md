@@ -411,7 +411,6 @@ Phase별 상세 Task와 진행 상황을 추적한다.
   - **무엇**: `trace_id`, `session_id`, `request_id`를 기본 필드로 포함하는 structured logger 래퍼. Go 표준 `log/slog` 기반으로 JSON 출력 형식 지원
   - **왜**: Phase 3에서 LLM 호출이 시작되면 어떤 요청이 어떤 플래너 결정을 내렸는지 로그 없이 추적이 불가능하다. Phase 8의 OTel span 연동 전까지의 디버깅 기반을 이 시점에 확보해야 Phase 4~7에서 실질적으로 활용 가능함
   - **비고**: `log/slog`는 Go 1.21 표준 패키지이므로 외부 의존 없음. Phase 8 Task 8-3-2는 이 logger에 OTel span trace ID를 연동하는 것으로 범위가 조정됨 (8-3-1은 OTel SDK 초기화, 8-3-2가 logger 연동). LLMPlanner, ToolRouter, Runtime의 주요 진입/종료 지점에서 이 logger를 사용하도록 교체
-  - **산출물**: `internal/observability/logger.go`
 
 ### Step 3-7. 설계 결정 문서화
 
@@ -575,556 +574,228 @@ Phase별 상세 Task와 진행 상황을 추적한다.
 
 ## Phase 5 — Verifier / Retry / Concurrency
 
+> **재작성 지점**: Task 5-1-1까지 완료 상태. 이하 구간은 `plan-init` 규칙("무엇이 동작하는가" 기준)으로 재작성되어 있음. 파일 경로·함수명 같은 구현 힌트는 IMPLEMENT.md로 이관 대상.
+
+**회귀 체크**: Phase 4 Exit Criteria (세션 복원, Memory 주입 경로)가 재작성 구간 진입 전에 여전히 통과해야 한다.
+
 ### Step 5-1. Concurrency 기초
 
-- [x] **Task 5-1-1. context.WithTimeout을 이용한 tool 실행 단위 timeout 적용**
-  - **무엇**: ToolRouter.Route() 호출 시 per-tool timeout을 context에 적용하는 구현. context 취소 시 goroutine이 정리되는 패턴 포함
-  - **왜**: Phase 3에서 LLM 호출이 시작된 이후 deadline 없이 운용되고 있음. tool 실행 단위부터 timeout을 적용해야 Phase 7 병렬 실행에서 goroutine leak이 발생하지 않으며, 이 패턴을 Phase 9 전체 request deadline(Task 8-1-2)의 기반으로 사용
-  - **비고**: Phase 8의 Task 8-1-1(per-tool timeout)과 역할이 겹치지 않도록 이 Task는 "context 전달 패턴 확립"에 집중하고, Phase 8에서 설정값 외부화를 담당
-  - **산출물**: `internal/tools/router.go` 수정 (context deadline 전달), `internal/agent/concurrency_test.go` (동작 검증 테스트)
+- [x] **Task 5-1-1. tool 실행 단위 timeout 적용 상태**
+  - **목적**: Phase 3에서 LLM 연결 이후 deadline 없이 굴러온 실행 경로에 첫 번째 timeout 경계를 세운다. Phase 8 전체 request deadline과 Phase 6/7 병렬 실행이 전부 이 context 전파 패턴을 전제한다.
+  - **입력**: Phase 4까지 통합된 Runtime과 ToolRouter가 context 인자로 호출되는 상태
+  - **산출물**: ToolRouter가 호출마다 deadline이 적용된 context를 tool에게 전달하는 경로, 그 동작을 재현하는 테스트
+  - **Exit Criteria**: 의도적으로 지연시킨 tool이 `context.DeadlineExceeded` 계열 에러로 중단되는 것이 테스트로 관찰된다
 
-- [ ] **Task 5-1-2. errgroup 의존성 추가 및 병렬 tool 실행 실습**
-  - **무엇**: `go get golang.org/x/sync` 실행 후 `go mod tidy`. `errgroup`을 사용해 독립적인 tool 2개를 goroutine으로 병렬 실행하고 결과를 병합하는 예제 구현. context 취소 시 in-flight goroutine 정리 패턴 포함
-  - **왜**: Phase 6의 Workflow 병렬 실행 엔진(Task 6-1-4b)과 Phase 7의 Worker goroutine 관리가 errgroup + WaitGroup 패턴을 전제로 함. 이 패턴을 Phase 5에서 단순한 tool 실행으로 먼저 실습하지 않으면 Phase 6에서 처음 마주치게 됨. `golang.org/x/sync`는 외부 의존성이므로 go.mod에 없으면 Task 5-1-2 작성 즉시 빌드가 깨짐
-  - **비고**: 결과물은 독립 실행 파일이 아닌 concurrency 패턴 검증용 테스트 코드로 작성. Phase 6 Task 6-1-4b 구현 시 이 패턴을 직접 참조
-  - **산출물**: `go.mod`/`go.sum` 갱신, `internal/agent/parallel_example_test.go`
+- [ ] **Task 5-1-2. 독립 tool 2개가 errgroup으로 병렬 실행되고 취소가 전파된다**
+  - **목적**: Phase 6 Workflow 병렬 실행과 Phase 7 Worker goroutine 관리가 모두 전제하는 "errgroup + context 취소" 패턴을 아주 얕은 범위에서 먼저 손으로 돌려 본다. 이 패턴이 없는 채로 Phase 6에 들어가면 그래프 실행 디버깅과 goroutine leak 디버깅이 한 번에 몰린다.
+  - **입력**: Task 5-1-1의 context 전파 패턴이 작동하는 상태
+  - **산출물**: 독립 tool 2개를 동시에 실행하는 실행 경로 + 한쪽 실패 시 나머지를 취소하는 동작을 관찰하는 테스트
+  - **Exit Criteria**: (1) 두 tool이 동시에 시작되는 것이 테스트 타이밍으로 관찰된다 (2) 한쪽이 에러를 내면 나머지 tool의 context가 Done으로 전이된다 (3) `go test -race`로 경고 없이 통과한다
 
-### Step 5-2. Verifier 인터페이스
+- [ ] **Task 5-2. Runtime이 Verifier를 거쳐 done/retry/fail 3분기로 종료 판정한다**
+  - **목적**: 지금까지 Runtime 내부에 흩어져 있던 종료 판정 로직을 "검증 결과"라는 단일 경계로 모은다. loop가 언제 끝나는지를 Verifier 한 곳에서 설명할 수 있어야 Task 5-3(retry), 5-5(reflection)가 같은 축 위에 붙을 수 있다.
+  - **입력**: Phase 1의 Runtime loop, Phase 1의 `IsFinished` 종료 판정, Phase 2의 에러 분류가 동작하는 상태
+  - **산출물**: Verifier 경계 (인터페이스 + 기본 구현 + Runtime 주입), Runtime loop 상의 verifier 호출 지점
+  - **Exit Criteria**: 다음 3가지 관찰 지점이 모두 테스트로 재현된다 — (1) FinalAnswer가 비어 있는 결과에서 verifier가 `retry`를 내면 loop가 한 step 더 진행, (2) tool 에러가 섞인 결과에서 `fail`을 내면 Status가 `failed`로 전이하며 종료, (3) 정상 결과에서 `done`이면 loop가 정상 종료한다
 
-- [ ] **Task 5-2-1. VerifyStatus / VerifyResult 타입 정의**
-  - **무엇**: `done`, `retry`, `fail` 상태를 갖는 열거형과 VerifyResult struct
-  - **왜**: Verifier 인터페이스 반환 타입이 먼저 있어야 인터페이스를 정의할 수 있음
-  - **산출물**: `internal/verifier/verify_result.go`
+- [ ] **Task 5-3. RetryPolicy가 retry 결정의 단일 지점이 되고 LLMPlanner 내부 하드코딩 retry는 사라진다**
+  - **목적**: Phase 3의 JSON 파싱 재시도(하드코딩 1회)와 Phase 5에서 도입하는 정책 retry가 이중으로 돌지 않도록 retry 진입점을 하나로 모은다. 무한 재시도 방지가 retry 레이어의 존재 이유이므로 상한 검증이 핵심이다.
+  - **입력**: Task 5-2가 끝나 verifier가 retry 신호를 낼 수 있는 상태
+  - **산출물**: RetryPolicy 경계 (정책 호출 지점이 Runtime 한 곳에 고정), Phase 3의 하드코딩 retry 제거분
+  - **Exit Criteria**: (1) 연속 실패 시 설정된 최대 횟수에서 loop가 종료된다, (2) `llm_parse_error`가 RetryPolicy 외의 경로에서 재시도되지 않는다 — Phase 3 LLMPlanner 테스트(Task 3-4-7)가 회귀 없이 통과하는 것으로 확인
 
-- [ ] **Task 5-2-2. Verifier 인터페이스 정의**
-  - **무엇**: `Verify(ctx, AgentState) (VerifyResult, error)` 인터페이스
-  - **왜**: loop가 verifier 구현에 의존하지 않도록 경계를 인터페이스로 정의
-  - **산출물**: `internal/verifier/verifier.go`
+- [ ] **Task 5-4. 에러 유형별 loop 제어 신호가 단일 진입점에서 분기된다**
+  - **목적**: 에러 분류(Phase 2)를 "그래서 loop는 어떻게 해야 하는가"로 변환하는 단일 함수를 확보한다. 분기가 Runtime 여러 지점에 흩어지면 새 실패 유형 추가 시 누락이 반드시 발생한다.
+  - **입력**: Phase 2의 AgentError 분류, Task 5-3의 RetryPolicy 경계
+  - **산출물**: Failure 분기 경계 (에러 → {fatal 종료, RetryPolicy에 위임, loop 속행} 매핑)
+  - **Exit Criteria**: (1) `tool_not_found` → 즉시 종료, (2) `tool_execution_failed` + timeout → RetryPolicy 경로로 진입, (3) 빈 결과 → loop 속행 (다음 step에서 Planner가 다른 접근을 고를 기회) — 이 3개가 모두 테스트로 관찰된다
 
-- [ ] **Task 5-2-3. SimpleVerifier 구현 및 테스트**
-  - **무엇**: FinalAnswer가 비어있으면 `retry`, tool 에러 있으면 `fail`, 그 외 `done` 반환하는 구현체와 unit test
-  - **왜**: loop에 verifier를 연결하기 전에 각 케이스가 올바르게 분기되는지 검증
-  - **산출물**: `internal/verifier/simple_verifier.go`, `simple_verifier_test.go`
-
-- [ ] **Task 5-2-4. Verifier를 Runtime loop에 통합**
-  - **무엇**: `Runtime.Run()`의 `④ AgentState 반영` 이후에 `Verifier.Verify(ctx, state)` 호출 추가. `done` → loop 정상 종료, `retry` → loop 속행, `fail` → `Status = StatusFailed` 후 종료
-  - **왜**: Verifier 타입과 구현이 있어도 loop에 연결되지 않으면 Phase 5 Exit Criteria("done/retry/fail 분기 확인")를 달성할 수 없음. Reflection(Task 5-5-4)이 "Runtime에 연결"을 별도 Task로 갖는 것과 동일한 이유
-  - **비고**: `Runtime`은 `Verifier` 인터페이스만 주입받음. Verifier가 nil이면 skip (기존 Phase 1~4 동작 보존)
-  - **산출물**: `internal/agent/runtime.go` 수정
-
-### Step 5-3. Retry Policy
-
-- [ ] **Task 5-3-1. RetryPolicy 인터페이스 정의**
-  - **무엇**: `ShouldRetry(err, attempt) bool`, `Delay(attempt) time.Duration` 인터페이스
-  - **왜**: retry 로직이 loop에 인라인으로 있으면 유형별로 정책을 다르게 적용하기 어려움
-  - **비고**: Phase 3 Task 3-4-5에서 LLMPlanner 내부에 JSON 파싱 실패 시 하드코딩 1회 재시도를 구현했다. RetryPolicy 도입 시 해당 하드코딩 retry를 제거하고 RetryPolicy로 위임하는 정리 작업이 필요함 (이중 retry 방지)
-  - **산출물**: `internal/agent/retry_policy.go`
-
-- [ ] **Task 5-3-2. LinearRetryPolicy 구현**
-  - **무엇**: 최대 횟수와 고정 대기 시간을 설정할 수 있는 RetryPolicy 구현체
-  - **왜**: 가장 단순한 정책으로 먼저 검증. Phase 9에서 더 정교한 정책으로 교체 가능
-  - **산출물**: `internal/agent/linear_retry_policy.go`
-
-- [ ] **Task 5-3-3. RetryPolicy unit test 작성**
-  - **무엇**: max 3회 초과 시 `ShouldRetry=false` 반환 검증, 각 attempt별 Delay 값 검증
-  - **왜**: 무한 재시도 방지가 정책 구현의 핵심이므로 경계 케이스를 반드시 테스트
-  - **산출물**: `internal/agent/linear_retry_policy_test.go`
-
-- [ ] **Task 5-3-4. LLMPlanner 하드코딩 retry 제거 및 RetryPolicy 위임**
-  - **무엇**: Phase 3(Task 3-4-5)에서 LLMPlanner 내부에 구현한 JSON 파싱 실패 시 하드코딩 1회 재시도 로직을 제거하고, RetryPolicy.ShouldRetry()로 위임하도록 교체
-  - **왜**: RetryPolicy 도입 후에도 LLMPlanner 내부 하드코딩 retry가 남아 있으면 `llm_parse_error` 발생 시 LLMPlanner 1회 + RetryPolicy N회로 이중 재시도가 발생함. RetryPolicy가 모든 retry 결정의 단일 지점이 되어야 함
-  - **비고**: 이 Task 완료 후 `go test ./internal/planner/...` + `go test ./internal/agent/...` 전체 통과 확인 필수
-  - **산출물**: `internal/planner/llm_planner.go` 수정 (하드코딩 retry 제거), `internal/agent/runtime.go` 수정 (RetryPolicy 호출 경로 확인)
-
-### Step 5-4. Failure 분류
-
-- [ ] **Task 5-4-1. 실패 유형별 처리 분기 구현**
-  - **무엇**: 에러 유형별 loop 제어 신호를 결정하는 단일 함수 정의
-    - `tool_not_found` (fatal) → loop 즉시 종료
-    - `llm_parse_error` / `input_validation_failed` (retryable) → planner 재호출 (loop 속행, RetryPolicy 소비)
-    - `tool_execution_failed` + timeout → retry (loop 속행, RetryPolicy 소비)
-    - empty result → loop 속행 (Planner가 다음 step에서 AgentState의 빈 ToolResult를 보고 스스로 다른 접근을 결정)
-  - **왜**: 분기가 여러 곳에 흩어지면 새로운 실패 유형 추가 시 누락이 발생함
-  - **비고**: `input_validation_failed`는 Phase 2 정의상 fatal이지만, LLM이 잘못된 input을 생성한 경우(`llm_parse_error`로 분류)는 retryable. FailureHandler에서 에러 Kind를 기준으로 분기. FailureHandler는 "파라미터를 수정"하지 않는다 — 파라미터 결정은 Planner의 책임
-  - **산출물**: `internal/agent/failure_handler.go`
-
-### Step 5-5. Reflection
-
-> Verifier와 RetryPolicy가 안정화된 이후 도입. Reflection은 "verifier 판단 전 LLM 자기검증" 역할로, Verifier와 함께 있어야 상호 역할이 명확해진다.
-
-- [ ] **Task 5-5-1. ReflectResult 타입 정의**
-  - **무엇**: `Sufficient bool`, `MissingConditions []string`, `Suggestion string` 필드를 갖는 struct
-  - **왜**: Reflector 인터페이스 시그니처의 반환 타입
-  - **산출물**: `internal/verifier/reflect_result.go`
-
-- [ ] **Task 5-5-1b. AgentState에 ReflectionState 필드 추가**
-  - **무엇**: `AgentState`에 `ReflectionState` 필드 추가. `ReflectionState`는 `Sufficient bool`, `MissingConditions []string`, `Suggestion string`을 갖는 struct로 `internal/state` 패키지에 정의
-  - **왜**: Task 5-5-4에서 "Sufficient=false일 때 Runtime.Run()에 연결"하려면 AgentState에 reflection 결과를 저장하는 필드가 필요함. 이 필드가 없으면 loop가 reflection 결과를 참조할 수 없음
-  - **비고**: `internal/state`는 타입 정의만 담당. `ReflectionState`는 `ReflectResult`와 별개 타입으로 정의해 verifier → state 순환 참조를 방지 (verifier는 ReflectResult 반환, state는 ReflectionState 보관). **이 Task 완료 후 `go build ./...` 통과 확인 후 Task 5-5-2로 진행**
-  - **산출물**: `internal/state/reflection_state.go`, `internal/state/agent_state.go` 수정
-
-- [ ] **Task 5-5-2. Reflector 인터페이스 정의**
-  - **무엇**: `Reflect(ctx, AgentState) (ReflectResult, error)` 인터페이스
-  - **왜**: reflection이 loop에 하드코딩되지 않도록 인터페이스로 분리
-  - **산출물**: `internal/verifier/reflector.go`
-
-- [ ] **Task 5-5-3. LLMReflector 구현**
-  - **무엇**: reflection 전용 prompt를 사용해 LLM을 호출하고 ReflectResult를 반환하는 구현체
-  - **왜**: verifier와 동일한 LLMClient를 재사용하되 prompt가 달라야 함
-  - **비고**: **이 Task 완료 후 `go build ./...` 통과 확인 후 Task 5-5-3b로 진행**
-  - **산출물**: `internal/verifier/llm_reflector.go`
-
-- [ ] **Task 5-5-3b. prompt_builder에 ReflectionState 반영**
-  - **무엇**: `internal/planner/prompt_builder.go`를 수정해 `AgentState.ReflectionState`가 채워져 있을 때 `MissingConditions`와 `Suggestion`을 system prompt에 포함하는 로직 추가
-  - **왜**: ReflectionState가 AgentState에 저장되어도 LLMPlanner의 system prompt에 반영되지 않으면 reflection이 다음 Plan 결정에 영향을 주지 못함. loop 제어(Task 5-5-4)와 prompt 반영은 별개 작업
-  - **비고**: **이 Task 완료 후 `go build ./...` 통과 확인 후 Task 5-5-4로 진행**
-  - **산출물**: `internal/planner/prompt_builder.go` 수정
-
-- [ ] **Task 5-5-4. Reflection 결과를 AgentState에 반영**
-  - **무엇**: `Sufficient=false`일 때 loop가 추가 단계를 진행하도록 Runtime.Run()에 연결
-  - **왜**: reflection이 state에 반영되지 않으면 loop 제어에 아무 영향도 주지 않음
-  - **산출물**: `internal/agent/runtime.go` 수정
-
-### Step 5-6. 설계 결정 문서화
-
-- [ ] **Task 5-6-1. Phase 5 설계 결정 기록**
-  - **무엇**: Verifier/Reflector 역할 분리 근거, RetryPolicy 인터페이스 설계 결정, FailureHandler의 에러 유형별 분기 기준, Reflection과 Verification 순서 결정을 `docs/decisions/phase5.md`에 기록
-  - **왜**: Verifier(결과 검증)와 Reflector(LLM 자기검증)의 역할 경계는 직관적이지 않음. 이 결정이 문서화되지 않으면 Phase 6~7에서 새 컴포넌트 추가 시 어디에 검증 로직을 넣어야 할지 기준이 없어짐
-  - **산출물**: `docs/decisions/phase5.md`
+- [ ] **Task 5-5. Reflection 결과가 다음 Plan 호출과 loop 속행 판단에 실제로 반영된다**
+  - **목적**: LLM 자기검증을 "관찰 가능한 상태 변화"로 고정한다. Reflection을 추가하면서 loop에 아무 영향도 없으면 단순히 prompt 한 번 더 태우는 것에 그치므로, "prompt에 들어가는가"와 "loop가 한 번 더 도는가" 두 관찰 지점이 핵심이다.
+  - **입력**: Task 5-2가 완료돼 Verifier 경계가 Runtime에 붙어 있는 상태, Phase 3 prompt_builder
+  - **산출물**: Reflector 경계 (인터페이스 + 구현), AgentState의 reflection 보관 슬롯, prompt_builder에서 reflection 반영 경로, Runtime에서 reflection 결과로 loop를 한 번 더 돌리는 분기
+  - **Exit Criteria**: 같은 입력을 mock LLM으로 돌렸을 때 (1) 첫 Plan 호출 → 부족 판정 → 두 번째 Plan 호출 prompt에 missing conditions 문자열이 포함된 것이 관찰되고, (2) 두 번째 step에서 FinalAnswer가 채워져 loop가 종료되는 것이 테스트로 재현된다
 
 ### Phase 5 Exit Criteria
 
-- SimpleVerifier가 `done` / `retry` / `fail` 올바르게 분기 확인
-- RetryPolicy max 횟수 초과 시 loop 종료 확인
-- `tool_not_found` 에러 → fatal, `tool_execution_failed` 에러 → retry 분기 확인
-- `Sufficient=false` reflection 결과 시 loop 추가 진행 확인
-- `go test -race ./internal/agent/...` 통과 확인 (concurrency 패턴 검증)
-- 해당 Phase의 주요 설계 결정을 `docs/decisions/phase5.md`에 기록 (Task 5-6-1)
+- Phase 4 Exit Criteria 회귀 통과
+- done/retry/fail 3분기가 단일 verifier 경로로 관찰됨
+- retry 상한에서 loop가 종료되고, `llm_parse_error` retry가 단일 지점에서만 일어남
+- 에러 유형별 제어 신호 분기가 단일 진입점에 모여 있음
+- Reflection이 다음 Plan prompt와 loop 속행에 실제 영향을 주는 것 관찰
+- `go test -race ./internal/agent/... ./internal/verifier/...` 통과
+- Verifier vs Reflector 역할 분리 / RetryPolicy 단일화 / Failure 분기 기준이 `docs/decisions/phase5.md`에 기록
 
 ---
 
-
 ## Phase 6 — Multi-Agent Orchestration
 
-### Step 6-0. orchestration 패키지 설계 결정
+**회귀 체크**: Phase 5 Exit Criteria.
 
-- [ ] **Task 6-0-1. orchestration 패키지 의존 방향 및 Runtime 재사용 여부 결정**
-  - **무엇**: `internal/orchestration`이 `internal/agent`(Runtime)를 재사용하는지, 별도 실행 경로를 갖는지 결정. 허용되는 의존 방향을 CLAUDE.md 패키지 경계 규칙에 추가
-  - **왜**: WorkerAgent가 Runtime.Run()을 내부에서 호출하면 `orchestration → agent` 의존이 생김. 반대로 ManagerAgent를 Runtime이 호출하면 `agent → orchestration` 의존이 생겨 방향이 역전됨. 이 결정 없이 Task 6-3-1부터 구현하면 중간에 패키지 구조를 뜯어야 할 수 있음
-  - **비고**: 권장 방향 — WorkerAgent는 Runtime을 직접 주입받아 사용 (`orchestration → agent`). ManagerAgent는 orchestration 내부 조율자. 이 경우 `agent → orchestration` 의존이 없으므로 순환 없음
-  - **산출물**: `CLAUDE.md` 패키지 경계 규칙 섹션에 `internal/orchestration` 의존 방향 추가
+### Decision Point 6-D1. orchestration 패키지 의존 방향
 
-### Step 6-1. Task Contract
+> 구현 Task로 진입하기 전에 사용자 승인 필요.
 
-- [ ] **Task 6-1-1. Task / TaskResult 타입 정의**
-  - **무엇**: `Task` struct (ID, Type, InputPayload, Dependencies), `TaskResult` struct (TaskID, Output, Error, Latency)
-  - **왜**: agent 간 데이터를 주고받는 contract. 이 타입이 없으면 Agent 인터페이스와 Decomposer 인터페이스를 정의할 수 없음
-  - **산출물**: `internal/orchestration/task.go`
+- **선택지 A**: `orchestration → agent` — WorkerAgent가 Runtime을 주입받아 내부에서 호출. Runtime은 multi-agent 존재를 모름
+- **선택지 B**: `agent → orchestration` — Runtime이 Manager를 직접 호출. Runtime이 multi-agent를 인식
+- **Trade-off**: A는 Runtime 재사용 + 단방향 의존 + 역할 경계 유지. B는 Runtime이 multi-agent 인지 책임을 져 결합 증가 + Phase 7 Worker가 Runtime만 호출해도 되는 단순함이 무너짐
+- **기본 권장**: A
 
-- [ ] **Task 6-1-2. TaskDecomposer 인터페이스 정의**
-  - **무엇**: `Decompose(ctx, userInput) ([]Task, error)` 인터페이스
-  - **왜**: Manager가 분해 로직에 의존하지 않도록 경계를 인터페이스로 분리
-  - **산출물**: `internal/orchestration/task_decomposer.go`
+- [ ] **Task 6-1. Task DAG가 위상 정렬되고 독립 Task는 병렬로 실행되며 순환은 에러로 감지된다**
+  - **목적**: 실행 엔진 이전에 그래프 구조 자체가 옳은지 격리해서 검증한다. 그래프 오류와 goroutine 오류가 디버깅 단계에서 한 덩어리로 나오면 원인 분리가 불가능해진다.
+  - **입력**: Task 5-1-2의 errgroup + context 취소 패턴
+  - **산출물**: Workflow 경계 (타입 + 정렬 + cycle detection + 병렬 실행 + 실패 전파)
+  - **Exit Criteria**: 4개 관찰 지점 — (1) 선형 의존 Task들이 의존 순서대로 실행됨, (2) 독립 Task 2개가 동시에 시작되는 것이 테스트 타이밍으로 관찰됨, (3) 순환 의존 Task 그래프에 cycle 에러 반환, (4) 한 Task 실패 시 나머지에 취소 전파되고 최종 결과에 실패가 병합됨 — 모두 `go test -race` 통과
 
-- [ ] **Task 6-1-3. LLMTaskDecomposer 구현**
-  - **무엇**: LLMClient를 사용해 사용자 입력을 Task 목록으로 분해하는 구현체
-  - **왜**: 실제 LLM 기반 분해가 있어야 호텔 시나리오 같은 현실적 입력 처리 가능
-  - **산출물**: `internal/orchestration/llm_task_decomposer.go`
-
-- [ ] **Task 6-1-3b. MockTaskDecomposer 구현**
-  - **무엇**: 고정된 Task 목록을 순서대로 반환하는 테스트용 TaskDecomposer. 호출 횟수 추적 포함
-  - **왜**: ManagerAgent 단위 테스트(Task 6-4-2)에서 분해 로직을 LLM 응답 형식에서 분리해야 테스트 결정성을 확보할 수 있음. LLMTaskDecomposer를 MockLLMClient로 간접 제어하면 테스트가 LLM 응답 JSON 형식에 의존하게 되어 TaskDecomposer 인터페이스 계약과 Workflow 실행 로직을 독립적으로 검증하기 어려움
-  - **비고**: Phase 3의 MockPlanner, MockLLMClient와 동일한 패턴. `testutil/` 또는 `internal/orchestration/` 에 배치
-  - **산출물**: `internal/orchestration/mock_task_decomposer.go`
-
-- [ ] **Task 6-1-4a. Workflow 타입 + topological sort + cycle detection 구현**
-  - **무엇**: Task 간 의존 관계를 표현하는 `Workflow` 타입 정의. 위상 정렬(topological sort)로 실행 가능한 순서를 결정하고, 순환 의존(cycle) 감지 시 에러를 반환하는 로직 구현
-  - **왜**: 실행 엔진 구현 전에 그래프 정렬과 순환 감지가 먼저 독립적으로 동작해야 함. 이 두 로직을 분리하지 않으면 goroutine 실행 중 발생한 오류와 그래프 구조 오류를 구분할 수 없음
-  - **산출물**: `internal/orchestration/workflow.go` (타입 + topological sort + cycle detection)
-
-- [ ] **Task 6-1-4b. Workflow 실행 엔진 구현 — goroutine 병렬 실행 + 실패 전파 + 결과 병합**
-  - **무엇**: Task 6-1-4a에서 정렬된 순서를 기반으로, 의존이 없는 Task를 goroutine으로 병렬 실행하는 엔진 구현. 단일 Task 실패 시 나머지 Task에 실패를 전파하고 최종 결과를 병합하는 로직 포함
-  - **왜**: 그래프 로직(4a)과 goroutine 관리(4b)를 분리해야 디버깅 지점이 명확해짐. 실패 전파 방식(즉시 전파 vs 나머지 완료 후 전파)은 Task 6-1-4b 구현 시 결정
-  - **비고**: `sync.WaitGroup` + `errgroup` 패턴 권장. context 취소로 in-flight goroutine 정리
-  - **산출물**: `internal/orchestration/workflow.go` 수정 (실행 엔진 추가)
-
-- [ ] **Task 6-1-5. Workflow unit test 작성**
-  - **무엇**: topological sort 순서 검증, 순환 의존 감지 시 에러 반환 검증, 독립 Task 병렬 실행 여부 검증 (goroutine 동시 시작 확인), 단일 Task 실패 시 결과 병합 동작 검증
-  - **왜**: topological sort와 cycle detection은 복잡한 로직으로 ManagerAgent 통합 테스트(Task 6-4-2)에서는 세부 케이스를 검증하기 어려움. Workflow 자체를 격리해서 테스트해야 Task 6-4-1 구현 시 의존할 수 있음
-  - **산출물**: `internal/orchestration/workflow_test.go`
-
-### Step 6-2. Agent 인터페이스
-
-- [ ] **Task 6-2-1. Agent 인터페이스 정의**
-  - **무엇**: `Name() string`, `CanHandle(Task) bool`, `Execute(ctx, Task) (TaskResult, error)` 인터페이스
-  - **왜**: Manager가 worker 구현체를 직접 알지 않아도 되도록 경계를 인터페이스로 정의
-  - **산출물**: `internal/orchestration/agent.go`
-
-### Step 6-3. Worker Agent 구현
-
-- [ ] **Task 6-3-0. Task → AgentState 변환 어댑터 구현**
-  - **무엇**: `orchestration.Task`를 `AgentState`로 변환하는 어댑터 함수 구현. `TaskID`를 `RequestID`로, `InputPayload`를 `UserInput`으로 매핑. 이전 Task의 `TaskResult.Output`(선행 단계 실행 결과)은 `RequestState.ToolResults`에 주입. WorkerAgent 내부에서 `Runtime.Run()` 호출 전에 사용
-  - **왜**: WorkerAgent.Execute(ctx, Task)에서 `Runtime.Run(ctx, AgentState)`를 호출하려면 Task를 AgentState로 변환하는 로직이 필요함. 이 어댑터가 없으면 각 WorkerAgent마다 변환 코드가 중복됨. FilterAgent는 SearchAgent의 `TaskResult.Output`을 입력으로 받아 `RequestState.ToolResults`에 주입하는 방식으로 데이터를 전달함
-  - **비고**: 각 WorkerAgent는 독립적인 `AgentState`를 가짐. 데이터 흐름은 `TaskResult.Output → 어댑터 → 다음 AgentState.Request.ToolResults` 경로를 따름. tool 카테고리 분류 없이 순서대로 쌓으며 Planner(LLM)가 ToolName과 Output을 보고 판단
-  - **산출물**: `internal/orchestration/task_adapter.go`
-
-- [ ] **Task 6-3-0b. FilterAgent / RankingAgent용 mock tool 구현**
-  - **무엇**: `filter_mock` tool (입력: results 배열 + max_price, 출력: 가격 조건에 맞는 결과 배열), `ranking_mock` tool (입력: results 배열, 출력: rating 기준 내림차순 정렬 결과) 구현 및 Registry 등록
-  - **왜**: FilterAgent(Task 6-3-2)와 RankingAgent(Task 6-3-3)는 내부에서 Runtime.Run()을 통해 Tool을 실행함. Phase 2 registry에는 `calculator`, `weather_mock`, `search_mock`만 있고 이 두 agent가 사용할 tool이 없으므로 agent 구현 전에 tool이 먼저 있어야 함
-  - **비고**: Phase 2의 tool 구현 패턴(`Name()`, `Description()`, `InputSchema()`, `Execute()`)을 그대로 따름. `docs/tools.md`에 두 tool의 spec 추가
-  - **산출물**: `internal/tools/filter_mock/filter_mock.go`, `internal/tools/ranking_mock/ranking_mock.go`, `docs/tools.md` 수정
-
-- [ ] **Task 6-3-1. SearchAgent 구현**
-  - **무엇**: `hotel_search` task를 처리하는 worker agent
-  - **왜**: 시나리오의 첫 번째 단계. search_mock tool을 내부에서 사용
-  - **산출물**: `internal/orchestration/search_agent.go`
-
-- [ ] **Task 6-3-2. FilterAgent 구현**
-  - **무엇**: `filter_by_price` task를 처리하는 worker agent
-  - **왜**: SearchAgent 결과를 입력으로 받아 처리하는 의존 관계가 있는 task 실습
-  - **산출물**: `internal/orchestration/filter_agent.go`
-
-- [ ] **Task 6-3-3. RankingAgent 구현**
-  - **무엇**: `sort_by_rating` task를 처리하는 worker agent
-  - **왜**: FilterAgent 결과를 받아 독립적으로 정렬 처리. 병렬 실행 적합 여부를 판단하는 실습
-  - **산출물**: `internal/orchestration/ranking_agent.go`
-
-- [ ] **Task 6-3-4. SummaryAgent 구현**
-  - **무엇**: 앞 단계 결과를 받아 LLM으로 요약하는 worker agent
-  - **왜**: 마지막 단계에서 LLM 호출이 포함된 task 처리 패턴 실습
-  - **산출물**: `internal/orchestration/summary_agent.go`
-
-### Step 6-4. Manager Agent
-
-- [ ] **Task 6-4-1. ManagerAgent 구현**
-  - **무엇**: TaskDecomposer와 worker 목록을 주입받아, Task 6-1-4에서 구현한 `Workflow`를 내부적으로 사용해 실행 순서를 결정하고 결과를 병합하는 구조체. ManagerAgent는 분해(Decompose) + Workflow 실행 위임 + 결과 병합 역할
-  - **왜**: multi-agent orchestration의 핵심. Workflow가 topological sort와 병렬 실행 엔진을 담당하고, ManagerAgent는 그 조율자 역할. Phase 5에서 익힌 concurrency 패턴을 Workflow 내부에서 실제 적용
-  - **비고**: ManagerAgent가 goroutine을 직접 관리하지 않는다 — goroutine 관리는 Workflow가 담당. 역할 분리를 명확히 해야 Task 6-1-5(Workflow unit test)가 독립적으로 의미를 가짐
-  - **산출물**: `internal/orchestration/manager_agent.go`
-
-- [ ] **Task 6-4-2. ManagerAgent unit test 작성**
-  - **무엇**: worker 선택 로직, Workflow를 통한 병렬/순차 실행 여부, 결과 병합 검증. `testutil/mock_llm.go`(Task 3-3-1)와 표준 `testing.T`를 사용
-  - **왜**: manager 로직이 잘못되면 task 순서 오류나 결과 누락이 발생하며 디버깅이 어려움
-  - **산출물**: `internal/orchestration/manager_agent_test.go`
-
-### Step 6-5. Multi-Agent 실행 로그
-
-- [ ] **Task 6-5-1. 실행 trace 로그 구현**
-  - **무엇**: 호출된 agent 이름, 호출 순서, 각 latency, 실패 지점을 구조화된 로그로 출력
-  - **왜**: multi-agent 시나리오는 단일 agent보다 흐름 추적이 복잡하므로 로그가 없으면 디버깅 불가
-  - **산출물**: `internal/orchestration/trace.go`
-
-### Step 6-6. 설계 결정 문서화
-
-- [ ] **Task 6-6-1. Phase 6 설계 결정 기록**
-  - **무엇**: `orchestration → agent` 의존 방향 결정 근거, ManagerAgent vs Workflow 역할 분리 이유, Task 간 데이터 전달 방식(`TaskResult → 어댑터 → 다음 AgentState`), 실패 전파 방식 결정을 `docs/decisions/phase6.md`에 기록
-  - **왜**: orchestration 패키지 의존 방향은 Task 6-0-1에서 결정하지만 코드에는 드러나지 않음. Phase 7 서비스화에서 `orchestration.Task`와 `api.AsyncTask`를 구분해야 할 때 이 문서가 근거가 됨
-  - **산출물**: `docs/decisions/phase6.md`
+- [ ] **Task 6-2. "호텔 찾아줘" 입력 하나가 Search → Filter → Ranking → Summary 4단계로 실제 실행되어 결과가 반환된다**
+  - **목적**: TaskDecomposer + Manager + Worker + Workflow 조합이 사용자 입력에서 결과까지 흐르는지를 단일 관찰점에 모은다. 각 단계를 개별 Task로 쪼개면 "시나리오가 실제로 돈다"는 핵심 증거가 사라진다.
+  - **입력**: Task 6-1의 Workflow 경계, Decision Point 6-D1 결정, Phase 3의 MockLLMClient
+  - **산출물**: TaskDecomposer 경계 + Manager/Worker 경계 + Task ↔ AgentState 변환 경로 + Filter/Ranking에 필요한 mock tool + 실행 trace 로그
+  - **Exit Criteria**: (1) mock LLM으로 고정된 시나리오 입력을 주면 4개 worker가 정확한 순서(Search → Filter → Ranking → Summary)로 호출되는 것이 trace 로그로 관찰되고, (2) 최종 응답에 요약 문자열이 채워져 반환되며, (3) 순서상 Filter와 Ranking 의존 관계가 Workflow 정렬로 해소된다
 
 ### Phase 6 Exit Criteria
 
-- LLMTaskDecomposer가 사용자 입력을 Task 목록으로 분해 확인
-- 의존 관계 없는 Task가 goroutine으로 병렬 실행되는 것 확인
-- 의존 관계 있는 Task가 위상 정렬 순서대로 실행되는 것 확인
-- SearchAgent → FilterAgent → RankingAgent → SummaryAgent 호텔 검색 시나리오 E2E 통과
-- `go test -race ./internal/orchestration/...` 통과 확인 (Workflow 병렬 실행 goroutine race condition 없음)
-- 해당 Phase의 주요 설계 결정을 `docs/decisions/phase6.md`에 기록 (Task 6-6-1)
+- Phase 5 Exit Criteria 회귀 통과
+- Workflow 4개 관찰 지점 (정렬/병렬/cycle/실패 전파) 전부 통과
+- 호텔 검색 E2E 시나리오가 trace 로그 + 최종 응답으로 관찰됨
+- `go test -race ./internal/orchestration/...` 통과
+- 의존 방향(6-D1), Manager vs Workflow 역할 분리, Task 간 데이터 전달 방식이 `docs/decisions/phase6.md`에 기록
 
 ---
 
 ## Phase 7 — Runtime 서비스화
 
-> **Kafka 도입 여부**: README 기술 스택에 Kafka가 "후반 확장 스택 (Phase 7~)"으로 언급되어 있으나, Phase 7에서는 InMemoryTaskQueue(buffered channel, Task 7-3-2)로 대체한다. Kafka 도입은 Phase 7 이후 검증된 큐 인터페이스를 기반으로 선택적으로 추가할 수 있으며, 이 커리큘럼의 필수 범위가 아니다.
+**회귀 체크**: Phase 6 Exit Criteria.
 
-### Step 7-0. 서비스화 사전 결정
+> Kafka 등 외부 브로커는 이 Phase의 범위가 아니다. TaskQueue는 buffered channel 기반 InMemory 구현으로 고정. 인터페이스만 경계로 두고 이후 선택 확장.
 
-- [ ] **Task 7-0-1. HTTP 라우터 확인**
-  - **무엇**: Phase 0 Task 0-3-3에서 Go 1.22+로 이미 고정됨. 표준 `net/http` ServeMux의 path parameter(`{id}`) 지원이 사용 가능한 상태임을 확인하고 통과
-  - **왜**: Task 7-1-2에서 `GET /v1/tasks/{id}` 같은 path parameter 엔드포인트를 구현할 때 라우터 방식을 재확인하는 체크포인트
-  - **비고**: Go 버전 변경이 없다면 `go version`으로 확인만 하고 통과. 외부 라우터(`chi` 등)는 도입하지 않음
-  - **산출물**: 확인만 (산출물 없음)
+### Decision Point 7-D1. HTTP 라우터 선택
 
-- [ ] **Task 7-0-2. cmd/agent-api 진입점 생성**
-  - **무엇**: `cmd/agent-api/main.go` 작성. HTTP 서버 초기화(포트 설정, graceful shutdown), 의존성 조립(Redis/Postgres 연결, MemoryManager, TaskQueue, Worker goroutine 시작, HTTP 핸들러 등록)을 담당하는 진입점
-  - **왜**: Phase 0 Task 0-3-1에서 `cmd/agent-api/` 디렉터리는 이미 생성됨. 그러나 HTTP 서버 진입점 구현 Task가 없으면 Task 7-1-2(핸들러 구현)를 완성해도 실제로 서버를 띄울 수 없음. `cmd/agent-cli/main.go`(CLI)는 계속 유지되며, 이 Task는 CLI와 독립적인 HTTP 서버 진입점을 추가하는 것
-  - **비고**: `cmd/agent-api/main.go`는 `SIGTERM`/`SIGINT` 수신 시 Worker graceful shutdown(Task 7-3-4)을 트리거하는 context cancel을 담당. Worker, TaskQueue, Handler 조립 순서: `InMemoryTaskQueue → Worker(queue, runtime, repo) → handler(queue, repo) → http.Server`
-  - **산출물**: `cmd/agent-api/main.go`
+- **선택지 A**: 표준 `net/http` ServeMux (Go 1.22+ path parameter)
+- **선택지 B**: `chi`/`gorilla/mux` 등 외부 라우터
+- **Trade-off**: A는 외부 의존 0 + 기능 최소, B는 미들웨어 생태계
+- **기본 권장**: A (Phase 0 Task 0-3-3에서 Go 1.22+ 고정됨)
 
-- [ ] **Task 7-0-3. Admin 엔드포인트 인증 비목표 명시**
-  - **무엇**: `GET /v1/admin/*` 엔드포인트에 인증/인가를 **적용하지 않음**을 `docs/scope.md`에 명시
-  - **왜**: Phase 7의 admin API(`GET /v1/admin/tasks`, `GET /v1/admin/sessions/{id}` 등)는 민감한 내용을 반환하지만, 이 커리큘럼의 목적은 runtime 제어 흐름 학습이며 인증/인가는 비목표임. 명시하지 않으면 Phase 7 구현 시 "인증을 달아야 하나"라는 혼동이 생김
-  - **비고**: 실제 서비스화 시 반드시 인증이 필요하다는 경고 문구 포함
-  - **산출물**: `docs/scope.md` 수정
+### Decision Point 7-D2. ask_user 비동기 대기 방식
 
-### Step 7-1. HTTP API
+- **선택지 A**: Runtime.Run()이 `ask_user`에서 반환하고, 사용자 입력 수신 후 새 Run() 호출로 재개 (시그니처 불변)
+- **선택지 B**: Runtime loop 내부에서 channel로 대기 (Worker goroutine 차단)
+- **Trade-off**: A는 Runtime 시그니처 불변 + Worker 비차단, B는 loop 상태를 그대로 유지하지만 Worker 당 task 병렬성이 줄어듦
+- **기본 권장**: A
 
-- [ ] **Task 7-1-1. 요청/응답 타입 정의**
-  - **무엇**: `RunRequest`, `RunResponse`, `TaskStatusResponse` struct
-  - **왜**: JSON 직렬화 기준이 되는 타입 정의 없이는 핸들러 구현 불가
-  - **산출물**: `internal/api/types.go`
+### Decision Point 7-D3. Admin 엔드포인트 인증 범위
 
-- [ ] **Task 7-1-2. HTTP 핸들러 구현**
-  - **무엇**: `POST /v1/agent/run`, `GET /v1/tasks/{id}`, `GET /v1/sessions/{id}` 엔드포인트
-  - **왜**: CLI 입력기를 HTTP 인터페이스로 교체하는 핵심 단계
-  - **비고**: `GET /v1/sessions/{id}`는 클라이언트가 자신의 세션 요약(RecentContext, ActiveGoal)을 조회하는 **사용자 facing** 엔드포인트로, 응답에 SessionState 전체가 아닌 요약 필드만 포함. `GET /v1/admin/sessions/{id}`(Task 7-4-3)는 디버깅용으로 SessionState 전체를 반환하는 **관리자 전용** 엔드포인트로 구분
-  - **산출물**: `internal/api/handler.go`
+- **결정 내용**: 이 커리큘럼의 목적은 runtime 제어 흐름 학습이며, admin 엔드포인트 인증/인가는 명시적 비목표. `docs/scope.md`에 명시 필요.
+- **확인 필요**: "인증 미적용"을 scope 문서에 박는 것에 대한 사용자 승인
 
-- [ ] **Task 7-1-2b. 헬스체크 엔드포인트 구현**
-  - **무엇**: `GET /health` 엔드포인트. Redis, Postgres 연결 상태와 Worker 활성 여부를 JSON으로 반환
-  - **왜**: 서비스화 목표에서 프로세스가 정상 동작 중인지 확인할 수단이 없으면 운영 자동화(restart policy, load balancer healthcheck)가 불가능함. docker-compose의 `healthcheck` 설정과도 연동 가능
-  - **비고**: 응답 형식 예시 — `{"status": "ok", "redis": "ok", "postgres": "ok", "worker": "running"}`. 의존 서비스 연결 실패 시 HTTP 503 반환
-  - **산출물**: `internal/api/handler.go` 수정 (`GET /health` 핸들러 추가)
+- [ ] **Task 7-1. `cmd/agent-api` 프로세스가 기동되고 `/v1/agent/run`, `/v1/tasks/{id}`, `/v1/sessions/{id}`, `/health`가 응답한다**
+  - **목적**: API 서버로서 최소한의 기동 경로를 관찰 가능한 상태로 확보한다. 라운드트립이 되는 서버 없이는 이후 Task들이 전부 공중에 뜬다.
+  - **입력**: Phase 6 완료, Decision Point 7-D1 결정
+  - **산출물**: `cmd/agent-api` 진입점, 4개 엔드포인트, 요청/응답 JSON 경계
+  - **Exit Criteria**: (1) `go run ./cmd/agent-api`로 서버 기동, (2) `POST /v1/agent/run`에 JSON 전달 시 200 + task ID 반환, (3) `GET /v1/tasks/{id}` 및 `/v1/sessions/{id}`가 라운드트립, (4) `GET /health`가 의존 서비스 상태 JSON을 반환 — `httptest` 기반 핸들러 테스트로 재현
 
-- [ ] **Task 7-1-3. 핸들러 integration test 작성**
-  - **무엇**: `httptest`를 사용해 각 엔드포인트의 요청/응답 검증
-  - **왜**: API 계층 변경 시 하위 호환성 깨짐을 조기에 감지
-  - **산출물**: `internal/api/handler_test.go`
+- [ ] **Task 7-2. HTTP 요청이 Queue를 거쳐 Worker goroutine에서 실행되고, 단일/multi-agent 경로가 분기되며, graceful shutdown이 in-flight task를 잃지 않는다**
+  - **목적**: API 계층과 실행 엔진을 물리적으로 분리하고, Phase 6에서 만든 multi-agent 경로를 HTTP 경계에 연결한다. multi-agent가 CLI에서만 돌면 Phase 6의 산출물이 Phase 7 이후 실사용 경로에서 죽는다. 저장소는 이 시점에선 InMemory Repository로 두고, 프로세스 재시작 영속성은 Task 7-3에서 Redis로 교체.
+  - **입력**: Task 7-1의 핸들러 경로, Phase 6 Manager 경계
+  - **산출물**: TaskQueue 경계 + InMemory 구현 + Worker 루프 + 단일/multi 분기 경로 + graceful shutdown 경로 + AsyncTask 상태 기계(queued/running/succeeded/failed) + InMemory AsyncTaskRepository
+  - **Exit Criteria**: (1) POST 직후 task ID 즉시 반환 (동기 실행 아님), (2) Worker가 단일 agent 요청과 multi-agent 요청을 각각 맞는 경로로 처리하는 것이 테스트로 관찰됨, (3) AsyncTask 상태 전이(queued → running → succeeded/failed)가 관찰되고 잘못된 전이는 거부됨, (4) SIGTERM을 보내면 진행 중 task가 완료된 뒤 프로세스가 종료되고 결과는 Repository에 저장됨, (5) `go test -race ./internal/queue/...` 통과
 
-### Step 7-2. Async Task 상태
+- [ ] **Task 7-3. task 결과가 프로세스 재시작 후에도 `GET /v1/tasks/{id}`로 조회된다**
+  - **목적**: 서비스화의 최소 운영 요건인 "결과 휘발 방지"를 관찰 지점으로 고정한다. Task 7-2의 InMemory Repository만으로는 재시작 시 유실되어 Phase 7이 실질적 서비스 상태에 도달하지 못한다.
+  - **입력**: Task 7-2 완료, Phase 4의 Redis 연결 인프라
+  - **산출물**: RedisAsyncTaskRepository 구현, 기존 InMemory에서 Redis로 주입 교체
+  - **Exit Criteria**: (1) POST → task 완료 → API 프로세스 재시작, (2) 재시작 후 동일 task ID 조회 시 이전 결과가 그대로 반환되는 것이 integration test로 관찰됨
 
-- [ ] **Task 7-2-1. AsyncTask 타입 및 상태 전이 구현**
-  - **무엇**: `queued`, `running`, `succeeded`, `failed` 상태와 상태 전이 검증 로직
-  - **왜**: 잘못된 상태 전이(예: queued → succeeded 직접 전환)를 런타임에 잡아야 함
-  - **산출물**: `internal/api/async_task.go`, `async_task_test.go`
+- [ ] **Task 7-4. 운영자가 admin API만으로 최근 task / 실패 task / session dump / tool 통계를 조회할 수 있다**
+  - **목적**: 로그 grep 없이 운영 신호를 확보한다. Phase 8 timeout 튜닝과 Phase 9 포트폴리오 시나리오 데모에 쓸 최소 관측 채널이 이 단계에서 필요하다.
+  - **입력**: Task 7-2 완료, Decision Point 7-D3 결정
+  - **산출물**: 4개 admin 엔드포인트 (`/v1/admin/tasks`, `/v1/admin/tasks/failed`, `/v1/admin/sessions/{id}`, `/v1/admin/stats/tools`), tool 호출 통계 집계기
+  - **Exit Criteria**: 4개 엔드포인트 각각이 예상 형태의 JSON을 반환하고, tool 통계는 동일 tool 여러 호출 후 호출 횟수와 평균 latency가 증가하는 것이 테스트로 관찰됨
 
-- [ ] **Task 7-2-2. AsyncTask 결과 저장소 구현**
-  - **무엇**: `AsyncTaskRepository` 인터페이스 정의 (`Save`, `Load`, `ListRecent`) + InMemory 구현체. Worker가 task 완료 후 결과를 저장하고, `GET /v1/tasks/{id}` 핸들러가 조회하는 구조
-  - **왜**: task 결과를 저장소 없이 in-memory에만 두면 Worker goroutine 종료 시 결과가 소실됨. 또한 `GET /v1/tasks/{id}` 핸들러가 결과를 읽어올 의존 대상이 없으면 핸들러 구현이 불가능함
-  - **비고**: Phase 4의 SessionRepository 패턴과 동일한 인터페이스 구조 적용. InMemory 구현 후 필요 시 Redis/Postgres로 교체 가능. **InMemory는 프로세스 재시작 시 소실됨** — Phase 8 Exit Criteria에서 "프로세스 재시작 후 조회 가능"은 아래 Task 7-2-3에서 Redis 구현 후 달성 가능
-  - **산출물**: `internal/api/async_task_repository.go`
-
-- [ ] **Task 7-2-3. RedisAsyncTaskRepository 구현**
-  - **무엇**: Redis에 AsyncTask 결과를 JSON 직렬화하여 저장/조회하는 구현체. TTL 설정 포함 (완료 task 무기한 보존 방지)
-  - **왜**: Phase 8 Exit Criteria의 "프로세스 재시작 후 GET /v1/tasks/{id} 조회 가능"은 InMemory로 달성 불가. Phase 4에서 이미 Redis 연결이 확립되어 있으므로 추가 인프라 없이 구현 가능
-  - **비고**: Phase 4 `RedisSessionRepository`와 동일한 패턴. docker-compose에 Redis가 이미 정의되어 있음 (Task 0-2-1)
-  - **산출물**: `internal/api/redis_async_task_repository.go`
-
-### Step 7-3. Queue 구조
-
-- [ ] **Task 7-3-0. AsyncTask.Payload → AgentState 변환 어댑터 구현**
-  - **무엇**: `POST /v1/agent/run`의 `RunRequest`(Task 7-1-1)를 `AsyncTask.Payload`로 직렬화하는 로직과, Worker goroutine에서 `AsyncTask.Payload`를 역직렬화해 `AgentState`로 변환하는 어댑터 함수 구현
-  - **왜**: Task 7-3-3의 Worker 루프가 `AsyncTask.Payload → AgentState` 변환을 전제로 하지만, Payload 타입과 변환 경로가 먼저 정의되지 않으면 Worker 구현 중 타입을 즉석에서 결정해야 함. Phase 6의 `task_adapter.go`(Task 6-3-0)가 같은 이유로 별도 Task였던 것과 동일
-  - **비고**: `RunRequest.SessionID`와 `RunRequest.UserInput`을 `AgentState`의 대응 필드로 매핑. Phase 6 `orchestration.Task`와 달리 `AsyncTask`는 HTTP API 요청 단위이므로 WorkingMemory 주입이 필요 없음
-  - **산출물**: `internal/queue/payload_adapter.go`
-
-- [ ] **Task 7-3-1. TaskQueue 인터페이스 정의**
-  - **무엇**: `Enqueue(task)`, `Dequeue() (task, error)` 인터페이스
-  - **왜**: in-memory channel과 Redis Stream을 교체할 수 있도록 인터페이스로 먼저 분리
-  - **산출물**: `internal/queue/task_queue.go`
-
-- [ ] **Task 7-3-2. InMemoryTaskQueue 구현**
-  - **무엇**: buffered channel 기반 TaskQueue 구현체
-  - **왜**: Redis 없이도 API 서버 + worker 분리 구조를 검증할 수 있음
-  - **산출물**: `internal/queue/in_memory_task_queue.go`
-
-- [ ] **Task 7-3-3. Worker 루프 구현**
-  - **무엇**: queue에서 `AsyncTask`를 꺼내 `AsyncTask.Payload`를 `AgentState`로 변환한 뒤 `runtime.Run()`을 호출하고 결과를 `AsyncTaskRepository`에 저장하는 goroutine. `AsyncTask`(HTTP API 단위 task)와 Phase 6의 `orchestration.Task`(agent 내부 sub-task)는 별도 개념으로, 이 Worker는 HTTP API 요청 단위만 처리함
-  - **왜**: API 서버와 실행 엔진을 논리적으로 분리하는 핵심 단계
-  - **산출물**: `internal/queue/worker.go`
-
-- [ ] **Task 7-3-3b. Worker에서 Multi-Agent 요청 분기 구현**
-  - **무엇**: Worker가 `AsyncTask.Payload`를 분석해 단일 agent 요청이면 `runtime.Run()`을, multi-agent 요청이면 `ManagerAgent.Run()`을 호출하도록 분기 로직 추가. 분기 기준은 Payload에 포함된 `mode` 필드 (`single` | `multi`) 또는 TaskDecomposer가 Task를 2개 이상 반환하는지 여부로 결정
-  - **왜**: Phase 6에서 ManagerAgent + WorkerAgent로 multi-agent 시나리오를 구현하지만, Phase 7 Worker(Task 7-3-3)는 `runtime.Run()`만 호출함. 이 연결이 없으면 multi-agent 기능이 HTTP API에서 사용 불가능하고 CLI에서만 동작하는 미완성 기능으로 남음
-  - **비고**: Worker는 `ManagerAgent` 인터페이스만 주입받음. `internal/queue → internal/orchestration` 의존이 발생하며 이는 `queue → agent`와 동일한 방향이므로 순환 없음. `ManagerAgent`가 nil이면 항상 단일 agent 경로를 사용 (Phase 6 미완성 시 안전)
-  - **산출물**: `internal/queue/worker.go` 수정
-
-- [ ] **Task 7-3-4. Worker graceful shutdown 구현**
-  - **무엇**: `context.Done()` 신호 수신 시 현재 처리 중인 task를 완료한 뒤 종료하는 로직. `sync.WaitGroup`으로 in-flight task 추적
-  - **왜**: Worker가 처리 중인 task가 있을 때 프로세스가 강제 종료되면 task 결과가 저장소에 기록되지 않고 소실됨. `queued` 상태로 남아 있는 task는 재시작 후 재처리 불가 (InMemoryQueue 기준). 이 로직이 없으면 `SIGTERM`이 들어오는 순간 실행 중 데이터가 유실됨
-  - **산출물**: `internal/queue/worker.go` 수정
-
-### Step 7-4. Admin / Debug API
-
-- [ ] **Task 7-4-1. 최근 task 목록 엔드포인트 구현**
-  - **무엇**: `GET /v1/admin/tasks` — 최근 N개 AsyncTask 목록 반환 (상태, 생성 시각, 소요 시간 포함)
-  - **왜**: 운영 중 task 처리 현황을 API로 확인하는 가장 기본적인 수단. 로그 grep 없이 처리량과 상태 분포를 파악할 수 있음
-  - **산출물**: `internal/api/admin_handler.go`
-
-- [ ] **Task 7-4-2. 실패 task 조회 엔드포인트 구현**
-  - **무엇**: `GET /v1/admin/tasks/failed` — `failed` 상태의 AsyncTask만 필터링해 에러 메시지 포함 반환
-  - **왜**: 실패 task를 별도 조회할 수 없으면 모든 task 목록에서 수동으로 찾아야 함. 에러 유형별 패턴 파악이 어려워짐
-  - **산출물**: `internal/api/admin_handler.go` 수정
-
-- [ ] **Task 7-4-3. session dump 엔드포인트 구현**
-  - **무엇**: `GET /v1/admin/sessions/{id}` — 지정 SessionID의 SessionState 전체 내용 반환
-  - **왜**: 특정 session의 상태를 API로 덤프할 수 없으면 session 관련 버그(맥락 누락, 잘못된 복원) 디버깅이 코드 변경 없이 불가능함
-  - **산출물**: `internal/api/admin_handler.go` 수정
-
-- [ ] **Task 7-4-4. tool 호출 통계 엔드포인트 구현**
-  - **무엇**: `GET /v1/admin/stats/tools` — tool 이름별 호출 횟수, 평균 latency, 에러율 반환. 통계는 in-memory 누적 (프로세스 재시작 시 초기화)
-  - **왜**: 어떤 tool이 자주 실패하거나 느린지 확인하지 못하면 Phase 8 per-tool timeout 설정 최적화에 데이터 근거가 없음
-  - **비고**: 집계 구조체는 `tool_stats.go`에 분리. Phase 8 OTel 연동 후 이 통계는 메트릭으로 대체될 수 있음
-  - **산출물**: `internal/api/admin_handler.go` 수정, `internal/api/tool_stats.go`
-
-### Step 7-5. ask_user 비동기 처리
-
-- [ ] **Task 7-5-0. ask_user 비동기 처리 설계 결정**
-  - **무엇**: HTTP API 환경에서 `ask_user` ActionType 발생 시 runtime loop가 차단 없이 대기하는 메커니즘을 설계. `runtime.Run()`이 반환하고 클라이언트 입력 수신 후 재개하는 방식 vs loop 내 channel 대기 방식 중 선택하고 결정 사항을 문서화
-  - **왜**: Task 7-5-1은 `runtime.go`, `async_task.go`, `handler.go` 3개 파일에 동시 변경이 필요한 복잡한 작업. 구현 방식을 사전에 확정하지 않으면 구현 도중 `runtime.Run()` 시그니처 변경 여부를 결정짓는 상황이 발생함
-  - **비고**: 권장 방향 — `runtime.Run()`이 `ask_user`를 만나면 반환하고, 사용자 입력 수신 후 새 `runtime.Run()` 호출로 재개. 이렇게 하면 기존 loop 시그니처 변경 없이 구현 가능하며 Worker goroutine 차단도 없음
-  - **산출물**: `docs/decisions/phase7-ask-user.md`
-
-- [ ] **Task 7-5-1. ask_user ActionType 비동기 대기 메커니즘 구현**
-  - **무엇**: HTTP API 환경에서 Runtime이 `ask_user` ActionType을 만났을 때, 즉시 응답 대신 task를 `waiting_for_user` 상태로 전환하고 클라이언트가 사용자 입력을 제출할 수 있는 `POST /v1/tasks/{id}/input` 엔드포인트 구현. 입력 수신 시 해당 task를 재개
-  - **왜**: Phase 3(Task 3-1-1)에서 `ask_user`를 "Phase 8 HTTP API 환경에서 별도 설계"로 미뤘음. Phase 7에서 HTTP API와 AsyncTask 상태 기계가 완성되므로 이 시점에 구현하지 않으면 `ask_user`는 CLI에서만 동작하는 미완성 ActionType으로 남음
-  - **비고**: `AsyncTask` 상태에 `waiting_for_user` 추가 필요 (Task 7-2-1 `async_task.go` 수정). Phase 3(Task 3-1-1)에서 CLI 환경의 `ask_user → respond_directly 대체` 처리는 그대로 유지하되, HTTP API 환경에서는 이 Task의 메커니즘으로 처리
-  - **산출물**: `internal/api/async_task.go` 수정 (`waiting_for_user` 상태 추가), `internal/api/handler.go` 수정 (`POST /v1/tasks/{id}/input` 엔드포인트), `internal/agent/runtime.go` 수정 (ask_user 감지 후 channel 또는 저장소 경유 대기 패턴)
-
-### Step 7-6. 설계 결정 문서화
-
-- [ ] **Task 7-6-1. Phase 7 설계 결정 기록**
-  - **무엇**: `orchestration.Task`(Phase 6 sub-task)와 `api.AsyncTask`(HTTP 요청 단위) 개념 분리 근거, ask_user 비동기 대기 메커니즘 선택 이유(runtime.Run() 재호출 방식), HTTP 라우터 선택 결정을 `docs/decisions/phase7.md`에 기록
-  - **왜**: 두 Task 타입의 역할 경계가 코드에서는 명확하지 않음. Phase 9 문서화 시 이 경계를 설명할 기반이 됨
-  - **산출물**: `docs/decisions/phase7.md`
+- [ ] **Task 7-5. HTTP 환경에서 `ask_user` 발생 시 task가 대기 상태로 전환되고 사용자 입력 제출 후 재개된다**
+  - **목적**: Phase 3에서 CLI 대체 처리로 미뤄둔 ask_user를 HTTP 경계에서 실제로 완성한다. 이 Task가 없으면 ask_user는 영원히 CLI 전용 미완성 ActionType으로 남는다.
+  - **입력**: Task 7-2 완료, Decision Point 7-D2 결정
+  - **산출물**: AsyncTask에 `waiting_for_user` 상태 추가, 사용자 입력 제출 엔드포인트, Runtime 재개 경로
+  - **Exit Criteria**: (1) mock LLM으로 ask_user를 유도 → task가 `waiting_for_user` 상태로 전이되는 것이 `GET /v1/tasks/{id}`로 관찰, (2) 입력 제출 엔드포인트로 값 전달 → task가 재개되어 최종 `succeeded` 상태에 도달
 
 ### Phase 7 Exit Criteria
 
-- `cmd/agent-api/main.go`로 HTTP 서버가 실제로 기동되는 것 확인 (`go run ./cmd/agent-api/`)
-- `POST /v1/agent/run` 요청이 task를 queue에 넣고 즉시 task ID 반환 확인
-- `GET /v1/tasks/{id}`로 실행 중 / 완료 / 실패 상태 조회 확인
-- Worker가 queue에서 task를 꺼내 `runtime.Run()`을 호출하고 결과를 저장소에 영속화 확인
-- 프로세스 재시작 후 `GET /v1/tasks/{id}`로 이전 task 결과 조회 가능 확인
-- `httptest` 기반 handler integration test 통과 (`go test ./internal/api/...`)
-- `GET /health` 엔드포인트가 Redis/Postgres/Worker 상태를 반환하고, 의존 서비스 장애 시 HTTP 503 반환 확인
-- `GET /v1/admin/tasks`로 최근 task 목록 조회, `GET /v1/admin/tasks/failed`로 실패 task 필터링 조회 확인
-- `GET /v1/admin/stats/tools`로 tool별 호출 횟수 및 에러율 조회 확인
-- `ask_user` ActionType 발생 시 task가 `waiting_for_user` 상태로 전환되고, `POST /v1/tasks/{id}/input`으로 입력 제출 후 task가 재개되는 것 확인
-- `go test -race ./internal/queue/...` 통과 확인 (Worker goroutine 동시 접근 race condition 없음)
-- 해당 Phase의 주요 설계 결정을 `docs/decisions/phase7.md`에 기록
+- Phase 6 Exit Criteria 회귀 통과
+- Task 7-1 ~ 7-5 각 Task의 Exit Criteria 통과
+- `go test -race ./internal/queue/... ./internal/api/...` 통과
+- 라우터 선택, ask_user 처리 방식, `orchestration.Task` vs `api.AsyncTask` 개념 분리 근거가 `docs/decisions/phase7.md`에 기록
 
 ---
 
 ## Phase 8 — 운영 고도화
 
-### Step 8-1. Timeout / Cancellation
+**회귀 체크**: Phase 7 Exit Criteria.
 
-- [ ] **Task 8-1-1. tool별 timeout 설정 외부화**
-  - **무엇**: Phase 5(Task 5-1-1)에서 확립한 context deadline 전달 패턴 위에, tool 이름별 timeout 값을 설정 파일(`config`)에서 주입받아 ToolRouter가 사용하도록 변경. 기본값 fallback 포함
-  - **왜**: Phase 5에서는 코드에 하드코딩된 timeout으로 패턴만 확립함. tool마다 응답 시간이 다르므로 (예: search tool은 5s, calculator는 1s) 설정으로 분리해야 운영 중 조정 가능
-  - **비고**: Phase 5에서 `router.go`에 이미 context deadline 전달이 구현되어 있음. 이 Task는 timeout 값을 config로 외부화하는 것이 목적이며, context 전달 로직 자체를 재구현하지 않음
-  - **산출물**: `internal/config/config.go` 수정 (tool timeout 맵 추가), `internal/tools/router.go` 수정 (config에서 timeout 값 읽기)
+### Decision Point 8-D1. OTel exporter 선택
 
-- [ ] **Task 8-1-2. 전체 request deadline 설정**
-  - **무엇**: runtime.Run() 진입 시 전체 요청에 대한 context deadline 설정
-  - **왜**: tool 개별 timeout만으로는 loop 자체가 무한히 도는 것을 막을 수 없음
-  - **산출물**: `internal/agent/runtime.go` 수정
+- **선택지 A**: stdout exporter (인프라 추가 없음, 시각화 없음)
+- **선택지 B**: OTLP → Jaeger/Collector (docker-compose에 컨테이너 추가, trace tree 시각화 가능)
+- **Trade-off**: A는 기동 부담 최소 + span 구조 확인은 로그로, B는 trace 시각화가 Phase 9 데모에 직접 쓰임
+- **기본 권장**: A로 시작하고 exporter 교체 가능한 구조로 두는 것. 단, Phase 9 포트폴리오에 trace 스크린샷이 필요하면 B.
 
-### Step 8-2. 비용 제어
+- [ ] **Task 8-1. tool별 timeout이 config로 주입되고 전체 request deadline도 적용된다**
+  - **목적**: Task 5-1-1에서 확립한 context 패턴에 (1) 운영 중 조정 가능한 외부화, (2) 루프 전체 상한을 덧붙인다. 전자는 tool 특성별 튜닝, 후자는 loop 무한 진행 방지가 이유다.
+  - **입력**: Task 5-1-1의 context 전파 패턴, Phase 7 완료
+  - **산출물**: config의 tool timeout 맵, Runtime 진입 시점의 전체 deadline 적용
+  - **Exit Criteria**: (1) config에서 tool A의 timeout을 짧게 주면 A 실행이 `tool_execution_failed` (retryable)로 중단되는 것이 관찰, (2) 전체 deadline 초과 시 loop가 `context.Canceled` 계열로 즉시 종료 관찰
 
-- [ ] **Task 8-2-1. session별 token 누적 추적**
-  - **무엇**: Phase 3의 TokenUsage를 session 단위로 합산하는 집계 로직. TokenTracker는 `map[sessionID]TokenUsage` 형태의 자체 in-memory 저장소를 갖고, SessionRepository에 의존하지 않음
-  - **왜**: 요청별 token이 아닌 session 전체 비용이 실제 운영 비용 단위임. `llm → state` 패키지 의존을 만들지 않으려면 TokenTracker가 독립 저장소를 갖는 구조가 필요
-  - **비고**: Phase 7에서 Worker goroutine이 동시에 여러 개 실행되므로 map 접근은 반드시 `sync.Mutex`로 보호해야 함. `go test -race`로 race detector 검증 필수
-  - **산출물**: `internal/llm/token_tracker.go`
+- [ ] **Task 8-2. session 누적 token이 임계값을 넘으면 loop가 중단된다**
+  - **목적**: 단일 session이 무제한 비용을 내는 것을 강제로 막는다. Phase 7 이후 Worker가 동시 실행되는 환경에서 tracker는 반드시 동시성 안전해야 한다.
+  - **입력**: Phase 3의 TokenUsage 기록 경로, Phase 7의 Worker
+  - **산출물**: session 단위 token tracker (동시성 보호), 비용 한도 정책 → loop 중단 연결
+  - **Exit Criteria**: (1) 작은 임계값 설정 + 다회 호출 시나리오에서 세션이 임계값 교차 직후 loop가 종료되는 것이 관찰, (2) `go test -race ./internal/llm/...` 통과
 
-- [ ] **Task 8-2-2. 비용 한도 초과 시 중단 정책 구현**
-  - **무엇**: session 누적 token이 임계값 초과 시 loop를 중단하는 정책
-  - **왜**: 한도 없이 두면 단일 session이 과도한 비용을 발생시킬 수 있음
-  - **산출물**: `internal/agent/cost_policy.go`
+- [ ] **Task 8-3. 한 요청이 request → planner → tool → verifier → memory 구간에서 단일 trace로 연결되고 로그의 trace_id가 span TraceID와 일치한다**
+  - **목적**: latency 병목과 실패 지점을 trace 하나로 파악 가능하게 만든다. span이 붙어 있어도 서로 연결이 끊기면 Phase 9 시나리오 데모에서 "왜 느렸는지"를 설명할 수 없다.
+  - **입력**: Decision Point 8-D1 결정, Phase 3 structured logger
+  - **산출물**: OTel SDK 초기화 경로, Runtime/Planner/Tool/Verifier/Memory 각 구간 span, logger trace_id 필드의 span 연동
+  - **Exit Criteria**: 하나의 요청에서 (1) exporter 출력(stdout 또는 Jaeger)으로 부모-자식 관계가 연결된 span tree가 확인되고, (2) 같은 요청의 로그 라인들이 모두 동일한 trace_id를 갖는 것이 관찰된다
 
-### Step 8-3. Observability
+- [ ] **Task 8-4. tool 사용 제한 + max step + 비용 한도가 Runtime의 단일 `Policy.Check()` 호출로 적용된다**
+  - **목적**: 정책 호출 지점이 Runtime 여러 곳에 분산되는 것을 막고 향후 정책 추가 지점을 하나로 고정한다. 파사드 구조가 없으면 Task 8-2의 비용 정책과 기존 max step 처리가 각자 다른 위치에서 호출되어 누락/중복이 생긴다.
+  - **입력**: Task 8-2 완료, Phase 1의 max step 처리
+  - **산출물**: PolicyLayer 파사드, Runtime 호출 경로 단일화
+  - **Exit Criteria**: (1) Runtime 코드에서 개별 정책 호출이 사라지고 `Policy.Check()` 단일 호출만 남은 상태에서, (2) 3개 정책이 모두 유효하게 동작하는 것이 테스트로 확인됨
 
-- [ ] **Task 8-3-0. OpenTelemetry 의존성 추가**
-  - **무엇**: `go get go.opentelemetry.io/otel`, `go get go.opentelemetry.io/otel/sdk`, `go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc`(또는 stdout exporter) 실행 후 `go mod tidy`
-  - **왜**: Task 8-3-1(OTel SDK 초기화)에서 `go.opentelemetry.io/otel` 패키지를 import하는데, go.mod에 없으면 첫 줄 작성 즉시 빌드가 깨짐. OTel은 관련 패키지가 여러 모듈로 나뉘어 있어 한 번에 추가해야 의존성 충돌 없이 go mod tidy가 통과됨
-  - **비고**: stdout exporter부터 시작하는 것을 권장 — OTLP/Jaeger는 exporter 교체만으로 나중에 변경 가능. 선택한 exporter와 버전을 Task 완료 시 기록할 것
-  - **산출물**: `go.mod`, `go.sum` 갱신
-
-- [ ] **Task 8-3-1. OpenTelemetry SDK 초기화**
-  - **무엇**: `TracerProvider` 초기화, exporter 설정(stdout 또는 OTLP), SDK bootstrap 코드 작성. `docker-compose.yml`에 Jaeger 또는 OTEL Collector 컨테이너 추가
-  - **왜**: span을 추가하기 전에 TracerProvider가 없으면 span 데이터가 어디에도 전송되지 않음. exporter 설정 없이는 trace 확인 자체가 불가능
-  - **산출물**: `internal/observability/tracer.go` (초기화 함수), `docker-compose.yml` 수정
-
-- [ ] **Task 8-3-2. Logger에 OTel span trace ID 연동**
-  - **무엇**: Phase 3(Task 3-6-1)에서 만든 structured logger의 `trace_id` 필드를 OTel span의 TraceID/SpanID로 교체. `context.Context`에서 span을 꺼내 logger 필드에 자동 주입하도록 수정
-  - **왜**: Phase 3의 logger는 request_id 기반의 자체 trace_id를 사용함. OTel 연동 이후에는 span TraceID가 trace의 단일 기준이 되어야 Jaeger 등 외부 트레이서와 로그가 같은 ID로 연결됨
-  - **비고**: logger 인터페이스는 변경하지 않음 — 내부 구현에서 span을 꺼내는 방식으로만 수정. Task 8-3-1(OTel SDK 초기화) 완료 이후에 진행
-  - **산출물**: `internal/observability/logger.go` 수정
-
-- [ ] **Task 8-3-3a. Runtime + Planner OTel span 추가**
-  - **무엇**: `Runtime.Run()` 전체를 감싸는 root span, loop 각 step의 child span, `LLMPlanner.Plan()` 호출 span 추가. span attribute에 request_id, session_id, step_count, action_type 포함
-  - **왜**: latency 병목이 planner(LLM 호출)에 있는지 loop 제어에 있는지 구분하려면 이 두 컴포넌트의 span이 가장 먼저 필요함
-  - **산출물**: `internal/agent/runtime.go` 수정, `internal/planner/llm_planner.go` 수정
-
-- [ ] **Task 8-3-3b. Tool 실행 경로 OTel span 추가**
-  - **무엇**: `ToolRouter.Route()` span, 개별 `Tool.Execute()` span 추가. span attribute에 tool_name, duration, error 여부 포함
-  - **왜**: tool별 latency와 에러율을 trace에서 직접 확인할 수 있어야 Phase 8 Task 8-1-1(per-tool timeout 외부화)의 설정값 튜닝에 데이터 근거가 됨
-  - **산출물**: `internal/tools/router.go` 수정, `internal/executor/tool_executor.go` 수정
-
-- [ ] **Task 8-3-3c. Verifier + Memory OTel span 추가**
-  - **무엇**: `Verifier.Verify()`, `Reflector.Reflect()`, `MemoryManager.LoadRelevantMemory()` 호출에 span 추가
-  - **왜**: verification과 memory 조회가 loop latency에 미치는 영향을 측정해야 Phase 9 성능 최적화 판단이 가능
-  - **산출물**: `internal/verifier/simple_verifier.go` 수정, `internal/verifier/llm_reflector.go` 수정, `internal/memory/default_memory_manager.go` 수정
-
-### Step 8-4. 에러 분류 체계 고도화
-
-- [ ] **Task 8-4-1. 에러 타입 분류 확장**
-  - **무엇**: Phase 2에서 정의한 기본 에러 타입에 `user_error`, `system_error`, `provider_error` 분류 추가
-  - **왜**: 기본 retryable/fatal 구분은 Phase 2에서 정의됨. 이 단계에서는 알림, 사용자 응답 메시지, 모니터링 레이블에 사용할 운영 관점의 분류를 추가하는 것이 목적
-  - **산출물**: `internal/types/errors.go` 확장
-
-### Step 8-5. Policy Layer
-
-- [ ] **Task 8-5-1. PolicyLayer 구현**
-  - **무엇**: tool 사용 제한, 사용자별 max step, 비용 한도를 단일 `Policy` 인터페이스로 묶는 파사드 레이어. 기존 `cost_policy.go`(Task 8-2-2)와 Phase 1의 max step 처리를 PolicyLayer 내부에서 호출하도록 통합
-  - **왜**: 정책이 여러 곳에 분산되면 정책 변경 시 누락이 생김. 파사드 구조를 명시하지 않으면 Task 8-2-2의 `cost_policy.go`와 역할이 중복되어 어느 쪽을 수정해야 할지 모호해짐
-  - **비고**: `PolicyLayer`는 기존 구현체를 교체하는 것이 아닌 단일 진입점(`PolicyLayer.Check()`)으로 감싸는 파사드 역할. `cost_policy.go`는 그대로 유지하되 `PolicyLayer.Check()`가 내부적으로 호출하는 구조. `runtime.go`에서 기존 개별 정책 호출을 `PolicyLayer.Check()` 단일 호출로 교체
-  - **산출물**: `internal/agent/policy.go`, `internal/agent/runtime.go` 수정 (PolicyLayer 호출 경로 추가)
-
-### Step 8-6. 설계 결정 문서화
-
-- [ ] **Task 8-6-1. Phase 8 설계 결정 기록**
-  - **무엇**: PolicyLayer 파사드 구조 선택 이유, per-tool timeout 외부화 방식, OTel exporter 선택(stdout vs OTLP vs Jaeger) 근거, TokenTracker 동시성 보호 전략을 `docs/decisions/phase8.md`에 기록
-  - **왜**: Phase 8은 운영 고도화 단계로 각 결정이 인프라 변경과 연결됨. Phase 9 포트폴리오 문서에서 "운영 가능성"을 설명할 때 이 결정들이 근거가 됨
-  - **산출물**: `docs/decisions/phase8.md`
+- [ ] **Task 8-5. 에러가 user / system / provider 분류 레이블을 갖는다**
+  - **목적**: Phase 2의 retryable/fatal 분류는 "retry 할지 말지"만 결정할 뿐 운영 단계에서 필요한 "누구 잘못인가"를 구분하지 못한다. 사용자 응답 톤(사과할지 재시도 요청할지), 알림 채널(oncall 호출할지 사용자 공지할지), 메트릭 레이블(provider 장애율 측정)을 결정하려면 책임 주체 기준의 별도 축이 필요하다. 기존 분류와 직교하는 태깅을 덧대 "provider 장애라 사용자 잘못 아님" 같은 판단을 코드가 직접 내릴 수 있게 만든다.
+  - **입력**: Phase 2 AgentError
+  - **산출물**: 분류 확장 (기존 retryable/fatal과 직교하는 책임 주체 축)
+  - **Exit Criteria**: 대표 에러 4종(input_validation_failed, tool_execution_failed, llm_parse_error, tool_not_found)이 각각 예상 분류 레이블(user/system/provider)로 태깅되는 것이 테스트로 관찰됨
 
 ### Phase 8 Exit Criteria
 
-- per-tool timeout 초과 시 `tool_execution_failed` (retryable) 에러 반환 확인
-- 전체 request deadline 초과 시 loop 즉시 종료 및 context.Canceled 에러 반환 확인
-- session 누적 token이 임계값 초과 시 loop 중단 확인
-- OTel span이 request → planner → tool → verifier 구간에 기록 확인
-- PolicyLayer에서 tool 사용 제한 / max step / 비용 한도 단일 인터페이스로 적용 확인
-- `go test -race ./internal/llm/...` 통과 확인 (TokenTracker 동시 접근 안전성)
-- 해당 Phase의 주요 설계 결정을 `docs/decisions/phase8.md`에 기록 (Task 8-6-1)
+- Phase 7 Exit Criteria 회귀 통과
+- Task 8-1 ~ 8-5 각 Task Exit Criteria 통과
+- `go test -race ./...` 전체 통과
+- OTel exporter 선택, PolicyLayer 파사드, TokenTracker 동시성 전략이 `docs/decisions/phase8.md`에 기록
 
 ---
 
 ## Phase 9 — 문서화 / 포트폴리오
 
-### Step 9-0. CI 자동화
+**회귀 체크**: Phase 8 Exit Criteria.
 
-- [ ] **Task 9-0-1. GitHub Actions CI 워크플로우 추가**
-  - **무엇**: push/PR 시 `go build ./...` + `go vet ./...` + `make test-unit`(`go test ./...`, integration 태그 제외) + `go test -race ./...`(unit 범위)를 실행하는 워크플로우
-  - **왜**: 포트폴리오에서 CI 배지가 있는 레포는 코드 신뢰도를 높임. "코드가 실제로 돌아간다"는 증거가 CI 통과로 증명되어야 함. Phase 4-0-1에서 수립한 `make test-unit` 타겟을 여기서 활용
-  - **비고**: 통합 테스트(`//go:build integration`)는 인프라(Redis, Postgres) 의존 때문에 CI 실행 대상에서 제외. 추후 필요 시 Docker service를 GitHub Actions에 추가해 확장 가능
-  - **산출물**: `.github/workflows/ci.yml`
+- [ ] **Task 9-1. push/PR마다 build + vet + unit test + race detector가 GitHub Actions에서 자동 실행된다**
+  - **목적**: "레포의 코드가 실제로 돌아간다"는 증거를 외부인에게 보여줄 단일 신호를 확보한다. CI 배지 없는 포트폴리오는 신뢰도가 낮다.
+  - **입력**: Phase 4 Task 4-0-1의 `make test-unit` 타겟
+  - **산출물**: CI 워크플로우, README의 CI 배지
+  - **Exit Criteria**: 레포에 푸시 시 CI가 녹색 체크를 반환하고, README 상단 배지가 렌더링된다. integration 테스트는 CI 범위 외임이 워크플로우 코멘트로 명시
 
-### Step 9-1. README 고도화
-
-- [ ] **Task 9-1-1. README 핵심 구조 다이어그램 추가**
-  - **무엇**: 텍스트 기반 아키텍처 다이어그램 + 실행 방법 + 예시 시나리오 추가
-  - **왜**: README만 읽어도 전체 구조를 파악할 수 있어야 포트폴리오로서 가치가 있음
-  - **산출물**: `README.md` 갱신
-
-### Step 9-2. 아키텍처 문서
-
-- [ ] **Task 9-2-1. 컴포넌트별 아키텍처 문서 작성**
-  - **무엇**: runtime overview, planner, memory, tool router, multi-agent 각각의 설계 의도와 경계를 설명하는 문서
-  - **왜**: 코드만 있으면 설계 의도가 드러나지 않음. 왜 이렇게 나눴는지를 설명해야 설계 역량을 보여줄 수 있음
-  - **비고**: Phase 0 Task 0-5-1에서 작성한 `docs/architecture-overview.md`는 전체 흐름 다이어그램(개요). 이 Task의 산출물은 컴포넌트별 심화 문서로 역할이 다름. `docs/architecture-overview.md`는 이 Task에서 갱신하거나 "개요는 이 파일 참고"로 상호 링크를 추가해 중복을 방지
-  - **산출물**: `docs/01-runtime-overview.md`, `docs/02-planner.md`, `docs/03-memory.md`, `docs/04-tool-router.md`, `docs/05-multi-agent.md`, `docs/architecture-overview.md` 링크 갱신
-
-### Step 9-3. 실행 시나리오 문서
-
-- [ ] **Task 9-3-1. 시나리오별 흐름 문서 작성**
-  - **무엇**: 날씨 질의, 호텔 검색, 실패 후 retry, multi-agent 흐름을 단계별로 기술하고 실제 실행 로그 예시 포함
-  - **왜**: 실제 동작 증거가 없는 포트폴리오는 신뢰도가 낮음. 시나리오 + 로그 조합이 핵심
-  - **산출물**: `docs/scenarios/`
+- [ ] **Task 9-2. 외부인이 레포 루트 문서만 보고 구조·기동법·대표 시나리오·설계 근거를 파악할 수 있다**
+  - **목적**: 포트폴리오로서의 최종 제출물. 코드만으로는 설계 의도가 드러나지 않으므로 "왜 이렇게 나눴는가"를 문서로 연결한다. 개별 문서 작성을 Task로 쪼개는 대신 "외부인이 이해 가능한가"라는 하나의 관찰 기준으로 묶는다.
+  - **입력**: Phase 0 ~ Phase 8의 `docs/decisions/*` 누적 기록, Phase 2의 tool spec 문서
+  - **산출물**: README (아키텍처 다이어그램 + 기동법 + 대표 시나리오), 컴포넌트별 아키텍처 문서, 시나리오별 실행 로그 (날씨 / 호텔 / 실패 후 retry / multi-agent)
+  - **Exit Criteria**: (1) README만 읽어도 기동법과 전체 구조가 파악됨, (2) 4개 시나리오에 실제 실행 로그가 첨부됨, (3) 각 컴포넌트(runtime / planner / memory / tool router / multi-agent)의 경계와 의존 방향이 문서화됨, (4) `go test ./...` 전체 통과
 
 ### Phase 9 Exit Criteria
 
-- README만 읽어도 전체 아키텍처와 실행 방법을 파악할 수 있는 수준의 다이어그램 + 예시 포함 확인
-- Phase 9까지 모든 컴포넌트의 설계 의도와 경계를 설명하는 아키텍처 문서 완비
-- 날씨 질의, 호텔 검색, 실패 후 retry, multi-agent 흐름 4개 시나리오에 실제 실행 로그 첨부 확인
+- Phase 8 Exit Criteria 회귀 통과
+- CI 녹색 + README 배지 노출
+- Task 9-2의 4개 관찰 지점 모두 통과
 - `go test ./...` 전체 통과
