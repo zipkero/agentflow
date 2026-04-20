@@ -20,7 +20,7 @@ func memoryRepositorySuite(t *testing.T, repo MemoryRepository) {
 
 	t.Run("Save_and_LoadByTags", func(t *testing.T) {
 		m := types.Memory{
-			ID:        "mem-001",
+			ID:        "00000000-0000-0000-0000-000000000001",
 			UserID:    "user-1",
 			Content:   "test memory content",
 			Tags:      []string{"go", "testing"},
@@ -49,15 +49,17 @@ func memoryRepositorySuite(t *testing.T, repo MemoryRepository) {
 	t.Run("LoadByTags_OR_condition", func(t *testing.T) {
 		// 서로 다른 태그를 가진 2개의 메모리를 저장한 뒤
 		// 두 태그를 함께 조회하면 OR 조건으로 둘 다 반환되어야 한다.
+		const m1ID = "00000000-0000-0000-0000-000000000011"
+		const m2ID = "00000000-0000-0000-0000-000000000012"
 		m1 := types.Memory{
-			ID:        "mem-or-1",
+			ID:        m1ID,
 			UserID:    "user-1",
 			Content:   "memory with alpha tag",
 			Tags:      []string{"alpha"},
 			CreatedAt: time.Date(2026, 4, 12, 1, 0, 0, 0, time.UTC),
 		}
 		m2 := types.Memory{
-			ID:        "mem-or-2",
+			ID:        m2ID,
 			UserID:    "user-1",
 			Content:   "memory with beta tag",
 			Tags:      []string{"beta"},
@@ -83,15 +85,16 @@ func memoryRepositorySuite(t *testing.T, repo MemoryRepository) {
 		for _, m := range got {
 			ids[m.ID] = true
 		}
-		if !ids["mem-or-1"] || !ids["mem-or-2"] {
-			t.Errorf("LoadByTags OR: expected both mem-or-1 and mem-or-2, got IDs %v", ids)
+		if !ids[m1ID] || !ids[m2ID] {
+			t.Errorf("LoadByTags OR: expected both %s and %s, got IDs %v", m1ID, m2ID, ids)
 		}
 	})
 
 	t.Run("LoadByTags_partial_tag_match", func(t *testing.T) {
 		// 태그 중 하나만 일치해도 반환되어야 한다.
+		const partialID = "00000000-0000-0000-0000-000000000021"
 		m := types.Memory{
-			ID:        "mem-partial-1",
+			ID:        partialID,
 			UserID:    "user-1",
 			Content:   "memory with multiple tags",
 			Tags:      []string{"gamma", "delta"},
@@ -109,13 +112,13 @@ func memoryRepositorySuite(t *testing.T, repo MemoryRepository) {
 
 		found := false
 		for _, g := range got {
-			if g.ID == "mem-partial-1" {
+			if g.ID == partialID {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Error("LoadByTags partial: mem-partial-1 not found despite matching tag 'gamma'")
+			t.Errorf("LoadByTags partial: %s not found despite matching tag 'gamma'", partialID)
 		}
 	})
 
@@ -141,7 +144,11 @@ func memoryRepositorySuite(t *testing.T, repo MemoryRepository) {
 
 	t.Run("LoadByTags_limit_exceeded", func(t *testing.T) {
 		// 동일 태그로 3개 저장 후 limit=2로 조회하면 2개만 반환되어야 한다.
-		for i, id := range []string{"mem-lim-1", "mem-lim-2", "mem-lim-3"} {
+		for i, id := range []string{
+			"00000000-0000-0000-0000-000000000031",
+			"00000000-0000-0000-0000-000000000032",
+			"00000000-0000-0000-0000-000000000033",
+		} {
 			m := types.Memory{
 				ID:        id,
 				UserID:    "user-1",
@@ -254,16 +261,18 @@ func TestPostgresMemoryRepository_OrderByCreatedAtDesc(t *testing.T) {
 
 	repo := NewPostgresMemoryRepository(pool)
 
+	const oldID = "00000000-0000-0000-0000-000000000041"
+	const newID = "00000000-0000-0000-0000-000000000042"
 	// 오래된 것부터 저장
 	old := types.Memory{
-		ID:        "mem-order-old",
+		ID:        oldID,
 		UserID:    "user-1",
 		Content:   "older memory",
 		Tags:      []string{"order"},
 		CreatedAt: time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC),
 	}
 	recent := types.Memory{
-		ID:        "mem-order-new",
+		ID:        newID,
 		UserID:    "user-1",
 		Content:   "newer memory",
 		Tags:      []string{"order"},
@@ -284,10 +293,10 @@ func TestPostgresMemoryRepository_OrderByCreatedAtDesc(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("LoadByTags: got %d, want 2", len(got))
 	}
-	if got[0].ID != "mem-order-new" {
-		t.Errorf("first result should be newest: got %q, want %q", got[0].ID, "mem-order-new")
+	if got[0].ID != newID {
+		t.Errorf("first result should be newest: got %q, want %q", got[0].ID, newID)
 	}
-	if got[1].ID != "mem-order-old" {
-		t.Errorf("second result should be oldest: got %q, want %q", got[1].ID, "mem-order-old")
+	if got[1].ID != oldID {
+		t.Errorf("second result should be oldest: got %q, want %q", got[1].ID, oldID)
 	}
 }
